@@ -1,0 +1,7 @@
+numpy>=1.26
+scipy>=1.10
+networkx>=3.1
+pandas>=2.0
+matplotlib>=3.8
+streamlit>=1.30
+pytest>=8.0
