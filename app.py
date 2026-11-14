@@ -559,6 +559,69 @@ def _page_routing_explorer(app_data_dir: str) -> None:
     )
 
 
+def _page_method(app_data_dir: str) -> None:
+    """Method and limitations page (page 5)."""
+    st.header("Method and limitations")
+
+    st.markdown(
+        "### What this is\n"
+        "A synthetic urban flood simulation and risk-aware routing project. "
+        "Synthetic recovery testing only; no real-world or Mumbai claim."
+    )
+
+    st.markdown(
+        "### Three separated layers\n"
+        "1. Susceptibility index: built from terrain, land cover and water "
+        "masks only.\n"
+        "2. Flood simulator: water balance, terrain-blind drainage, tide, "
+        "rainfall, per-face sea exchange.\n"
+        "3. Routing: Dijkstra, closures, penalised impedance.\n"
+        "The index never sees drainage, outfalls, lake specs, depths or the "
+        "simulator."
+    )
+
+    st.markdown(
+        "### Scenarios\n"
+        "R (90 mm/h peak, 120 mm), S1 (150 mm/h, 200 mm), S2 (tide amplitude "
+        "1.8 m), S3 (40 percent blocked drains). 96 x 96 grid, 50 m cells, "
+        "five environment seeds."
+    )
+
+    st.markdown(
+        "### Experiment A\n"
+        "Index beats elevation-only on AUC at 0.30 m in 20 of 20 "
+        "seed-scenario pairs; elevation-only has the higher top-decile lift "
+        "in many cells; weights were declared before the experiment and not "
+        "re-fitted."
+    )
+
+    st.markdown(
+        "### Experiment C (closure 0.30, lambda 0, pooled over 100 pairs)\n"
+        "Reachable fraction: R 0.50, S1 0.26, S2 0.48, S3 0.50. "
+        "Per-seed ranges: R 0.25 to 0.65, S1 0.05 to 0.55, S2 0.25 to 0.60, "
+        "S3 0.25 to 0.65."
+    )
+
+    st.markdown(
+        "### Limitations\n"
+        "- Reachable fraction measures network connectivity under closure, "
+        "not routing quality; about 54 percent of unreachable pairs are "
+        "splits into non-trivial components.\n"
+        "- Detour and exposure are means over pairs where both routes exist.\n"
+        "- P0 ignores depth, so exposure reduction against P0 is largely by "
+        "construction and the lambda effect is small.\n"
+        "- Roads are not terrain-aware; the deepest road edges appear to sit "
+        "in terrain pits.\n"
+        "- Peak depth maps show each cell's maximum over the run.\n"
+        "- Lake cells can reach several metres in the simulation; this was "
+        "not investigated.\n"
+        "- No calibration against real data.\n"
+        "- pandas is blocked by an application policy on the development "
+        "machine, so the app uses matplotlib and markdown tables.\n"
+        "- This is not a forecasting or emergency tool."
+    )
+
+
 def _page_coming(title: str) -> None:
     st.header(title)
     st.write("Coming in the next stage.")
@@ -579,7 +642,7 @@ def main() -> None:
     elif page == "Routing explorer":
         _page_routing_explorer(app_data_dir)
     elif page == "Method and limitations":
-        _page_coming("Method and limitations")
+        _page_method(app_data_dir)
     else:
         _page_coming(page)
 

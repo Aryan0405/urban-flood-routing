@@ -66,6 +66,19 @@ def _run_all_pages(timeout: float = 60.0):
             ), "page %r missing closure-threshold caption in at.caption values %r" % (
                 page_label, caption_values
             )
+        if page_label == "Method and limitations":
+            md_values = [str(m.value) for m in at.markdown]
+            assert any(
+                "Limitations" in mv for mv in md_values
+            ), "page %r missing 'Limitations' in at.markdown values %r" % (
+                page_label, md_values
+            )
+            assert any(
+                "not a forecasting or emergency tool" in mv
+                for mv in md_values
+            ), "page %r missing 'not a forecasting or emergency tool' in at.markdown values %r" % (
+                page_label, md_values
+            )
 
 
 def test_app_smoke_no_exceptions():

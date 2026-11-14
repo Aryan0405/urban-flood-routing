@@ -89,7 +89,7 @@ testing only; no external validity is claimed anywhere).
 | 2 | Flood simulator and dt sensitivity | complete |
 | 3 | Susceptibility index and Experiment A | complete |
 | 4 | Routing and Experiment C | complete |
-| 5 | Streamlit application (5 sections) | pending |
+| 5 | Streamlit application (5 sections) | app built, final review pending |
 | 6 | Closeout and documentation | pending |
 
 See STATUS.md for the current phase log with actual test results.

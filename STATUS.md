@@ -686,4 +686,31 @@ Phase 4 is complete and documented (docs/experiment_c/ plus docs/
 PHASE4_ROUTING_SPEC.md section 14); no code changes remain pending for
 Phase 4.
 
+## Phase 5: Streamlit application - IN PROGRESS
+
+- `app.py`: Streamlit app at repository root; 5 sidebar pages (Overview,
+  Susceptibility (Experiment A), Flood scenarios, Routing explorer,
+  Method and limitations); synthetic banner; no pandas, no st.table,
+  st.dataframe or st.bar_chart; uses matplotlib and markdown tables; pages
+  cached with st.cache_data/st.cache_resource.
+- `src/urbanflood/app_core.py`: build_env, build_d_e, compute_routes,
+  reachable_count, depth_stats, route_summary, summarize_experiment_a,
+  count_pairs, load_experiment_a_rows; no streamlit or matplotlib imports.
+- `src/urbanflood/app_data.py`: SCENARIO_NAMES, hpeak_filename,
+  write_hpeak_text, read_hpeak_text, write_manifest, read_manifest.
+- `app_data/`: 20 depth text files (hpeak_s0_*.txt .. hpeak_s4_*.txt,
+  6 decimals) plus manifest.txt; export check: closed-edge counts identical
+  to the .npy at closure 0.30 for all 20 seed-scenario pairs, max rounding
+  difference 5.0e-07 m; reachable fractions identical to
+  docs/experiment_c/summary.csv at all three thresholds for lam 0.
+- Tests: tests/test_app_data.py (10), tests/test_app_core.py,
+  tests/test_app_smoke.py; tests/test_ascii.py passes.
+- Lake-versus-land peak depth finding (seed 0 scenario R): whole grid max
+  5.3985 m on a lake cell, land max 3.6198 m; seed 4 scenario S1: whole
+  grid max 13.7824 m on a lake cell, land max 3.9683 m.
+
+### Commit state
+
+Phase 5 application built; final review pending.
+
 ## Phase 0: Scaffold and configuration - COMPLETE
