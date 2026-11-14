@@ -30,10 +30,14 @@ from urbanflood.config import (
 )
 from urbanflood.drainage import DrainageFields, generate_drainage
 from urbanflood.environment import build_environment
+from urbanflood.initial_state import build_initial_depth
+from urbanflood.numerics import enumerate_internal_faces, InternalFace
 from urbanflood.orchestrator import (
     run_simulation,
     SimulationResult,
     evaluate_tc10_sensitivity,
+    node_depths,
+    edge_depths,
 )
 from urbanflood.simulator import StepResult, step_timestep
 from urbanflood.config import SCENARIOS
@@ -419,7 +423,7 @@ def test_orchestrator_six_hour_execution():
     tide = config.scenarios["R"].tide
     exch = config.exchange
     runoff = config.runoff
-    h_initial = np.zeros((env.grid.n_rows, env.grid.n_cols), dtype=np.float64)
+    h_initial = build_initial_depth(env)
 
     # Monkeypatch orchestrator's binding of step_timestep to count
     # every invocation and record its timestep index. Run the six-hour
@@ -576,7 +580,7 @@ def test_orchestrator_tc12_rainfall_normalization():
     tide = config.scenarios["R"].tide
     exch = config.exchange
     runoff = config.runoff
-    h_initial = np.zeros((env.grid.n_rows, env.grid.n_cols), dtype=np.float64)
+    h_initial = build_initial_depth(env)
 
     # Analytical declared storm total in metres (scenario R: 120 mm).
     analytical_total_m = rain.total_mm / 1000.0
@@ -1601,7 +1605,7 @@ def _passing_arrays():
 
 
 def test_orchestrator_tc10_fallback_initial_pass_no_fallback(monkeypatch):
-    """Case A: Initial 30s vs 15s comparison passes → exactly two calls, no 7.5s."""
+    """Case A: Initial 30s vs 15s comparison passes -> exactly two calls, no 7.5s."""
     from urbanflood.orchestrator import evaluate_tc10_sensitivity
 
     calls = []
@@ -1638,7 +1642,7 @@ def test_orchestrator_tc10_fallback_initial_pass_no_fallback(monkeypatch):
 
 
 def test_orchestrator_tc10_fallback_dmax_failure_runs_fallback(monkeypatch):
-    """Case B: D_max failure → exactly three calls, third is dt=7.5, n_steps=2880."""
+    """Case B: D_max failure -> exactly three calls, third is dt=7.5, n_steps=2880."""
     from urbanflood.orchestrator import evaluate_tc10_sensitivity
 
     calls = []
@@ -1676,7 +1680,7 @@ def test_orchestrator_tc10_fallback_dmax_failure_runs_fallback(monkeypatch):
 
 
 def test_orchestrator_tc10_fallback_rmse_failure_runs_fallback(monkeypatch):
-    """Case C: RMSE failure → exactly three calls, third is dt=7.5, n_steps=2880."""
+    """Case C: RMSE failure -> exactly three calls, third is dt=7.5, n_steps=2880."""
     from urbanflood.orchestrator import evaluate_tc10_sensitivity
 
     calls = []
@@ -1714,7 +1718,7 @@ def test_orchestrator_tc10_fallback_rmse_failure_runs_fallback(monkeypatch):
 
 
 def test_orchestrator_tc10_fallback_dstorage_failure_runs_fallback(monkeypatch):
-    """Case D: D_storage failure → exactly three calls, third is dt=7.5, n_steps=2880."""
+    """Case D: D_storage failure -> exactly three calls, third is dt=7.5, n_steps=2880."""
     from urbanflood.orchestrator import evaluate_tc10_sensitivity
 
     calls = []
@@ -1727,7 +1731,7 @@ def test_orchestrator_tc10_fallback_dstorage_failure_runs_fallback(monkeypatch):
         if dt == 15.0:
             return _make_mock_result([[0.5, 0.2], [0.1, 0.0]], 1.0)
         if dt == 7.5:
-            # 15s vs 7.5s: H_peak close, S_final both 1.0 → fallback passes.
+            # 15s vs 7.5s: H_peak close, S_final both 1.0 -> fallback passes.
             return _make_mock_result([[0.501, 0.201], [0.101, 0.001]], 1.0)
         raise AssertionError(
             f"Unexpected run_simulation call: dt={dt}, n_steps={n_steps}")
@@ -1752,7 +1756,7 @@ def test_orchestrator_tc10_fallback_dstorage_failure_runs_fallback(monkeypatch):
 
 
 def test_orchestrator_tc10_fallback_failure_reported_no_further_reduction(monkeypatch):
-    """Case E: Initial fails and fallback also fails → attempted once, reports failure."""
+    """Case E: Initial fails and fallback also fails -> attempted once, reports failure."""
     from urbanflood.orchestrator import evaluate_tc10_sensitivity
 
     calls = []
@@ -1824,7 +1828,7 @@ def test_orchestrator_tc10_fallback_argument_consistency(monkeypatch):
         if dt == 15.0:
             return _make_mock_result([[0.0, 0.0], [0.0, 0.0]], 100.0)
         if dt == 7.5:
-            # 15s vs 7.5s close → fallback passes.
+            # 15s vs 7.5s close -> fallback passes.
             return _make_mock_result([[0.001, 0.001], [0.001, 0.001]], 100.0)
         raise AssertionError(
             f"Unexpected run_simulation call: dt={dt}, n_steps={n_steps}")
@@ -1934,7 +1938,7 @@ def test_orchestrator_tc11_face_count_proportionality():
     tide = config.scenarios["R"].tide
     exch = config.exchange
     runoff = config.runoff
-    h_initial = np.zeros((env.grid.n_rows, env.grid.n_cols), dtype=np.float64)
+    h_initial = build_initial_depth(env)
 
     result_30 = run_simulation(
         h_initial, env, drainage, rain, tide, exch, runoff,
@@ -2019,5 +2023,677 @@ def test_orchestrator_tc11c_aggregate_equals_per_step_single_step():
     assert result.internal_face_eval_total == per_step_count
     assert result.internal_face_eval_total == 4
     assert result.n_steps == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 21: TC14 - H_peak permutation invariance at simulation level
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrator_tc14_h_peak_permutation_invariance(monkeypatch):
+    """TC14: Bitwise H_peak permutation invariance at multi-timestep level.
+
+    Runs complete multi-timestep simulations via run_simulation() with
+    canonical vs permuted internal face generation order. Verifies that
+    H_peak is bitwise identical regardless of face processing order.
+
+    The only difference between the two runs is the order in which internal
+    faces are supplied to step_timestep(). All physical inputs, initial
+    conditions, scenario, timestep duration, and number of steps are
+    identical.
+    """
+    import urbanflood.simulator as sim_mod
+
+    n_rows, n_cols = 4, 4
+    z = np.array([
+        [1.0, 2.0, 3.0, 4.0],
+        [1.5, 2.5, 3.5, 4.5],
+        [2.0, 3.0, 4.0, 5.0],
+        [2.5, 3.5, 4.5, 5.0],
+    ])
+    is_ocean = np.zeros((n_rows, n_cols), dtype=bool)
+    is_lake = np.zeros((n_rows, n_cols), dtype=bool)
+    land_cover = np.full((n_rows, n_cols), CODE_VEGETATION, dtype=np.uint8)
+    outfall_mask = np.zeros((n_rows, n_cols), dtype=bool)
+    outfall_invert_m = np.zeros((n_rows, n_cols), dtype=np.float64)
+    env = _make_env(n_rows, n_cols, z, is_ocean, is_lake, land_cover,
+                     outfall_mask, outfall_invert_m)
+    h_initial = np.array([
+        [0.8, 0.4, 0.2, 0.0],
+        [0.6, 0.3, 0.1, 0.0],
+        [0.4, 0.2, 0.0, 0.0],
+        [0.2, 0.0, 0.0, 0.0],
+    ])
+    drainage = _make_drainage(n_rows * n_cols, 50.0, 0.5, False)
+    rain = _make_rain_scenario()
+    tide = _make_tide_config()
+    exch = _make_exchange_config()
+    runoff = _make_runoff_config()
+
+    # Generate canonical faces via the production function
+    faces_canonical = enumerate_internal_faces(n_rows, n_cols, is_ocean)
+
+    # Generate the same faces in reverse row-major order: genuinely different
+    # processing order, each face still canonical with i < j.
+    faces_permuted = []
+    for r in range(n_rows - 1, -1, -1):
+        for c in range(n_cols - 1, -1, -1):
+            if is_ocean[r, c]:
+                continue
+            i = r * n_cols + c
+            if c + 1 < n_cols and not is_ocean[r, c + 1]:
+                faces_permuted.append(InternalFace(i=i, j=i + 1))
+            if r + 1 < n_rows and not is_ocean[r + 1, c]:
+                faces_permuted.append(InternalFace(i=i, j=i + n_cols))
+
+    # Verify permutation is genuine: same face set, different order
+    assert [(f.i, f.j) for f in faces_permuted] != [(f.i, f.j) for f in faces_canonical]
+    assert {(f.i, f.j) for f in faces_permuted} == {(f.i, f.j) for f in faces_canonical}
+    assert len(faces_permuted) == len(faces_canonical)
+    assert len(faces_permuted) > 0
+
+    # Run 1: canonical face order via monkeypatch.setattr
+    monkeypatch.setattr(sim_mod, 'enumerate_internal_faces',
+                        lambda n_r, n_c, m: faces_canonical)
+    result_canon = run_simulation(
+        h_initial, env, drainage, rain, tide, exch, runoff,
+        DT, n_steps=5,
+    )
+
+    # Run 2: permuted face order via monkeypatch.setattr
+    monkeypatch.setattr(sim_mod, 'enumerate_internal_faces',
+                        lambda n_r, n_c, m: faces_permuted)
+    result_perm = run_simulation(
+        h_initial, env, drainage, rain, tide, exch, runoff,
+        DT, n_steps=5,
+    )
+
+    # Both runs must execute the same number of timesteps
+    assert result_canon.n_steps == result_perm.n_steps == 5
+
+    # Internal face evaluations must have occurred in both runs
+    assert result_canon.internal_face_eval_total > 0
+    assert result_perm.internal_face_eval_total > 0
+
+    # H_peak must have changed from the initial depth in both runs
+    assert not np.array_equal(result_canon.H_peak, h_initial)
+    assert not np.array_equal(result_perm.H_peak, h_initial)
+
+    # Internal transfers must have occurred in at least one run
+    assert (result_canon.internal_inflow_total > 0 or
+            result_canon.internal_outflow_total > 0 or
+            result_perm.internal_inflow_total > 0 or
+            result_perm.internal_outflow_total > 0)
+
+    # Bitwise equality of H_peak arrays: shape, dtype, and byte representation
+    assert result_canon.H_peak.shape == result_perm.H_peak.shape
+    assert result_canon.H_peak.dtype == result_perm.H_peak.dtype
+    assert result_canon.H_peak.tobytes() == result_perm.H_peak.tobytes()
+
+    # Also verify full final depth arrays match bitwise
+    assert result_canon.h_final.tobytes() == result_perm.h_final.tobytes()
+
+
+# ---------------------------------------------------------------------------
+# Test 34: Node-depth outputs (Stage 9)
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrator_node_depths_contract_real_simulation():
+    """Node depths: final depth at road-network nodes, indexed by node id.
+
+    Integration test: runs a real short simulation on the master-seed
+    environment and verifies the node-depth output against h_final.
+    """
+    config = build_default_config()
+    env = build_environment(master_seed=2027, config=config)
+    n_cells = env.grid.n_rows * env.grid.n_cols
+    drainage = generate_drainage(
+        master_seed=2027,
+        n_cells=n_cells,
+        blocked_fraction=0.20,
+        drainage_config=config.drainage,
+    )
+    rain = config.scenarios["R"].rainfall
+    tide = config.scenarios["R"].tide
+    exch = config.exchange
+    runoff = config.runoff
+    h_initial = build_initial_depth(env)
+    result = run_simulation(
+        h_initial, env, drainage, rain, tide, exch, runoff,
+        dt=30.0, n_steps=25,
+    )
+
+    depths = node_depths(result, env)
+
+    # Shape and dtype contract.
+    assert depths.shape == (env.road_network.n_nodes,)
+    assert depths.dtype == np.float64
+
+    # Indexed by node id: depth[k] == h_final at node cell k.
+    node_rows = env.road_network.node_rows.astype(np.int64)
+    node_cols = env.road_network.node_cols.astype(np.int64)
+    expected = result.h_final[node_rows, node_cols]
+    assert depths.shape == expected.shape
+    assert depths.dtype == expected.dtype
+    assert depths.tobytes() == expected.tobytes()
+
+    # Correspondence with the actual simulation state: every node cell is a
+    # simulated surface-water cell (land, non-ocean, non-lake) and its depth
+    # comes from h_final, finite and non-negative.
+    assert np.all(~env.is_ocean[node_rows, node_cols])
+    assert np.all(~env.is_lake[node_rows, node_cols])
+    assert np.all(np.isfinite(depths))
+    assert np.all(depths >= -1e-12)
+
+    # Determinism: repeated calls are bitwise identical.
+    depths_again = node_depths(result, env)
+    assert depths_again.tobytes() == depths.tobytes()
+
+    # Fresh array: caller mutation cannot affect h_final.
+    depths[0] = 999.0
+    assert result.h_final[node_rows[0], node_cols[0]] != 999.0
+
+
+def test_orchestrator_node_depths_final_depth_not_peak():
+    """Node depths come from h_final (final depth), not H_peak."""
+    n_rows, n_cols = 3, 3
+    h_final = np.full((n_rows, n_cols), 0.2, dtype=np.float64)
+    h_peak = np.full((n_rows, n_cols), 0.8, dtype=np.float64)
+    h_final[1, 1] = 0.5
+    h_peak[1, 1] = 1.2
+    result = SimpleNamespace(h_final=h_final, H_peak=h_peak)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            node_rows=np.array([0, 1, 2], dtype=np.int16),
+            node_cols=np.array([0, 1, 2], dtype=np.int16),
+        ),
+    )
+
+    depths = node_depths(result, env)
+
+    assert depths.dtype == np.float64
+    assert depths.shape == (3,)
+    assert depths[0] == 0.2
+    assert depths[1] == 0.5   # h_final value, not H_peak (1.2)
+    assert depths[2] == 0.2
+
+
+def test_orchestrator_node_depths_respects_node_id_ordering():
+    """Output order follows node id order; nodes are not re-sorted by position."""
+    h_final = np.arange(9, dtype=np.float64).reshape(3, 3)
+    result = SimpleNamespace(h_final=h_final)
+    # Deliberately non-row-major node order: output must follow node ids.
+    env = SimpleNamespace(
+        elevation_m=np.zeros((3, 3), dtype=np.float64),
+        road_network=SimpleNamespace(
+            node_rows=np.array([2, 0, 1], dtype=np.int16),
+            node_cols=np.array([0, 2, 1], dtype=np.int16),
+        ),
+    )
+
+    depths = node_depths(result, env)
+
+    assert depths.tobytes() == np.array([6.0, 2.0, 4.0], dtype=np.float64).tobytes()
+
+
+def test_orchestrator_node_depths_rejects_mismatched_h_final():
+    """A non-matching h_final shape raises ValueError."""
+    result = SimpleNamespace(h_final=np.zeros((2, 2), dtype=np.float64))
+    env = SimpleNamespace(
+        elevation_m=np.zeros((3, 3), dtype=np.float64),
+        road_network=SimpleNamespace(
+            node_rows=np.array([0], dtype=np.int16),
+            node_cols=np.array([0], dtype=np.int16),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="does not match environment grid shape"):
+        node_depths(result, env)
+
+
+def test_orchestrator_node_depths_preserves_source_dtype():
+    """Node depths preserve the dtype of result.h_final (no forced conversion).
+
+    The broader output dtype decision is deferred (spec section 17), so the
+    implementation must follow result.h_final rather than forcing float64.
+    """
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float32).reshape(n_rows, n_cols)
+    h_final[1, 1] = 99.0  # distinctive value
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            node_rows=np.array([0, 1, 2], dtype=np.int16),
+            node_cols=np.array([0, 1, 2], dtype=np.int16),
+        ),
+    )
+
+    depths = node_depths(result, env)
+
+    # Dtype preserved from source.
+    assert depths.dtype == np.float32
+    # Values correspond exactly to indexed final cell depths (flat indices 0,4,8).
+    expected = h_final[[0, 1, 2], [0, 1, 2]]
+    assert depths.dtype == expected.dtype
+    assert depths.tobytes() == expected.tobytes()
+    # Fresh array: no memory sharing with h_final.
+    assert not np.shares_memory(depths, h_final)
+    # Caller mutation cannot affect h_final.
+    depths[0] = 999.0
+    assert h_final[0, 0] != 999.0
+
+
+# ---------------------------------------------------------------------------
+# Test 35: Edge-depth outputs (Stage 13)
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrator_edge_depths_ordinary_two_cell_edge():
+    """Edge depths: ordinary two-cell edge samples [h0, (h0+h1)/2, h1]."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1)),   # edge 0: ordinary, path [(0,0),(0,1)]
+                ((0, 1), (0, 2)),   # edge 1: ordinary, path [(0,1),(0,2)]
+            ),
+            n_edges=2,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (2, 3)
+    assert samples.dtype == np.float64
+
+    # Edge 0: path [(0,0),(0,1)] -> depths [0.0, 1.0]
+    # Expected: [0.0, (0.0+1.0)/2, 1.0] = [0.0, 0.5, 1.0]
+    assert samples[0, 0] == 0.0
+    assert samples[0, 1] == pytest.approx(0.5)
+    assert samples[0, 2] == 1.0
+
+    # Edge 1: path [(0,1),(0,2)] -> depths [1.0, 2.0]
+    # Expected: [1.0, (1.0+2.0)/2, 2.0] = [1.0, 1.5, 2.0]
+    assert samples[1, 0] == 1.0
+    assert samples[1, 1] == pytest.approx(1.5)
+    assert samples[1, 2] == 2.0
+
+
+def test_orchestrator_edge_depths_three_cell_bridge_path():
+    """Edge depths: three-cell bridge path samples [h0, h1, h2] exactly."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2)),  # bridge edge, path [(0,0),(0,1),(0,2)]
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (1, 3)
+    assert samples.dtype == np.float64
+
+    # Path depths: [0.0, 1.0, 2.0]
+    # Expected: [0.0, 1.0, 2.0] (midpoint x=1.0 is integer -> h[1])
+    assert samples[0, 0] == 0.0
+    assert samples[0, 1] == 1.0
+    assert samples[0, 2] == 2.0
+
+
+def test_orchestrator_edge_depths_four_cell_bridge_path():
+    """Edge depths: four-cell bridge path samples [h0, (h1+h2)/2, h3]."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2), (1, 2)),  # bridge edge, N=4
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (1, 3)
+    assert samples.dtype == np.float64
+
+    # Path depths: h[0,0]=0.0, h[0,1]=1.0, h[0,2]=2.0, h[1,2]=5.0
+    # N=4: x values [0, 1.5, 3]
+    # Column 0: x=0.0, i=0, alpha=0 -> h[0] = 0.0
+    # Column 1: x=1.5, i=1, alpha=0.5 -> 0.5*h[1] + 0.5*h[2] = 0.5*1.0 + 0.5*2.0 = 1.5
+    # Column 2: x=3.0, i=3, alpha=0 -> h[3] = 5.0
+    assert samples[0, 0] == 0.0
+    assert samples[0, 1] == pytest.approx(1.5)
+    assert samples[0, 2] == 5.0
+
+
+def test_orchestrator_edge_depths_longer_bridge_path():
+    """Edge depths: longer bridge path (N=6) exercises fractional midpoint.
+
+    Path coordinates: x = 0, 2.5, 5. The midpoint x=2.5 is non-integer,
+    so it interpolates between path cells 2 and 3.
+    """
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1)),  # N=6
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (1, 3)
+    assert samples.dtype == np.float64
+
+    # Path depths: h[0,0]=0.0, h[0,1]=1.0, h[0,2]=2.0, h[1,2]=5.0,
+    #              h[2,2]=8.0, h[2,1]=7.0
+    # N=6: x values [0, 2.5, 5]
+    # Column 0: x=0.0, i=0, alpha=0 -> h[0] = 0.0
+    # Column 1: x=2.5, i=2, alpha=0.5 -> 0.5*h[2] + 0.5*h[3] = 0.5*2.0 + 0.5*5.0 = 3.5
+    # Column 2: x=5.0, i=5, alpha=0 -> h[5] = 7.0
+    assert samples[0, 0] == 0.0
+    assert samples[0, 1] == pytest.approx(3.5)
+    assert samples[0, 2] == 7.0
+
+
+def test_orchestrator_edge_depths_midpoint_is_cell_pair_average():
+    """Edge depths: midpoint on N=6 equals average of path cells 2 and 3.
+
+    Independently computes the expected midpoint from the path cell depths
+    rather than reproducing the implementation's indexing.
+    """
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    path = ((0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1))
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(path,),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    # Independent expectation: midpoint between path cells 2 and 3.
+    depths = [h_final[r, c] for r, c in path]
+    expected_mid = (depths[2] + depths[3]) / 2.0
+    assert samples[0, 1] == pytest.approx(expected_mid)
+
+
+def test_orchestrator_edge_depths_canonical_orientation():
+    """Edge depths: column 0 corresponds to edge_u, column 2 to edge_v."""
+    n_rows, n_cols = 3, 3
+    h_final = np.zeros((n_rows, n_cols), dtype=np.float64)
+    h_final[0, 0] = 10.0   # start cell
+    h_final[0, 2] = 30.0   # end cell
+    h_final[0, 1] = 20.0   # middle cell
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2)),  # path from edge_u cell (0,0) to edge_v cell (0,2)
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    # Column 0 must be edge_u cell depth (10.0), not edge_v cell depth (30.0).
+    assert samples[0, 0] == 10.0
+    assert samples[0, 2] == 30.0
+    # Reversing the path would swap columns 0 and 2; this test would fail.
+
+
+def test_orchestrator_edge_depths_canonical_edge_ordering():
+    """Edge depths: output rows follow canonical edge id order."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((2, 2), (2, 1)),   # edge 0: depths [8.0, 7.0] -> [8.0, 7.5, 7.0]
+                ((0, 0), (0, 1)),   # edge 1: depths [0.0, 1.0] -> [0.0, 0.5, 1.0]
+            ),
+            n_edges=2,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (2, 3)
+    # Row 0 (edge 0): path [(2,2),(2,1)] -> depths [8.0, 7.0]
+    assert samples[0, 0] == 8.0
+    assert samples[0, 1] == pytest.approx(7.5)
+    assert samples[0, 2] == 7.0
+    # Row 1 (edge 1): path [(0,0),(0,1)] -> depths [0.0, 1.0]
+    assert samples[1, 0] == 0.0
+    assert samples[1, 1] == pytest.approx(0.5)
+    assert samples[1, 2] == 1.0
+
+
+def test_orchestrator_edge_depths_output_shape():
+    """Edge depths: output shape is (n_edges, 3)."""
+    n_rows, n_cols = 3, 3
+    h_final = np.zeros((n_rows, n_cols), dtype=np.float64)
+    result = SimpleNamespace(h_final=h_final)
+    n_edges = 5
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1)),
+                ((0, 1), (0, 2)),
+                ((1, 0), (1, 1)),
+                ((1, 1), (1, 2)),
+                ((2, 0), (2, 1)),
+            ),
+            n_edges=n_edges,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (n_edges, 3)
+
+
+def test_orchestrator_edge_depths_preserves_source_dtype():
+    """Edge depths preserve the dtype of result.h_final (no forced conversion)."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float32).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2)),
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    assert samples.dtype == np.float32
+
+
+def test_orchestrator_edge_depths_fresh_copy():
+    """Edge depths: returned array is independent of result.h_final."""
+    n_rows, n_cols = 3, 3
+    h_final = np.arange(9, dtype=np.float64).reshape(n_rows, n_cols)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(
+                ((0, 0), (0, 1), (0, 2)),
+            ),
+            n_edges=1,
+        ),
+    )
+
+    samples = edge_depths(result, env)
+
+    # No memory sharing with h_final.
+    assert not np.shares_memory(samples, h_final)
+    # Caller mutation cannot affect h_final.
+    samples[0, 0] = 999.0
+    assert h_final[0, 0] != 999.0
+    assert h_final[0, 0] == 0.0
+
+
+def test_orchestrator_edge_depths_rejects_mismatched_h_final():
+    """Edge depths: non-matching h_final shape raises ValueError."""
+    result = SimpleNamespace(h_final=np.zeros((2, 2), dtype=np.float64))
+    env = SimpleNamespace(
+        elevation_m=np.zeros((3, 3), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=(),
+            n_edges=0,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="does not match environment grid shape"):
+        edge_depths(result, env)
+
+
+def test_orchestrator_edge_depths_rejects_empty_path():
+    """Edge depths: empty path raises ValueError."""
+    n_rows, n_cols = 3, 3
+    h_final = np.zeros((n_rows, n_cols), dtype=np.float64)
+    result = SimpleNamespace(h_final=h_final)
+    env = SimpleNamespace(
+        elevation_m=np.zeros((n_rows, n_cols), dtype=np.float64),
+        road_network=SimpleNamespace(
+            edge_path_cells=((),),
+            n_edges=1,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="empty path"):
+        edge_depths(result, env)
+
+
+def test_orchestrator_edge_depths_generated_network_endpoint_correspondence():
+    """Edge depths: actual generated road network endpoint correspondence.
+
+    Uses the real master-seed environment to verify that:
+    - edge_path_cells[k][0] is the cell of edge_u[k]
+    - edge_path_cells[k][-1] is the cell of edge_v[k]
+    - output row k matches direct computation from path cell depths
+    """
+    config = build_default_config()
+    env = build_environment(master_seed=2027, config=config)
+    n_cells = env.grid.n_rows * env.grid.n_cols
+    drainage = generate_drainage(
+        master_seed=2027,
+        n_cells=n_cells,
+        blocked_fraction=0.20,
+        drainage_config=config.drainage,
+    )
+    rain = config.scenarios["R"].rainfall
+    tide = config.scenarios["R"].tide
+    exch = config.exchange
+    runoff = config.runoff
+    h_initial = build_initial_depth(env)
+    result = run_simulation(
+        h_initial, env, drainage, rain, tide, exch, runoff,
+        dt=30.0, n_steps=5,
+    )
+
+    network = env.road_network
+    node_rows = network.node_rows.astype(np.int64)
+    node_cols = network.node_cols.astype(np.int64)
+
+    samples = edge_depths(result, env)
+
+    assert samples.shape == (network.n_edges, 3)
+    assert samples.dtype == np.float64
+
+    for k in range(network.n_edges):
+        path = network.edge_path_cells[k]
+
+        # Path[0] must be the cell of edge_u[k]; path[-1] the cell of edge_v[k].
+        u_row, u_col = int(node_rows[network.edge_u[k]]), int(node_cols[network.edge_u[k]])
+        v_row, v_col = int(node_rows[network.edge_v[k]]), int(node_cols[network.edge_v[k]])
+        assert path[0] == (u_row, u_col), f"edge {k}: path[0] != edge_u cell"
+        assert path[-1] == (v_row, v_col), f"edge {k}: path[-1] != edge_v cell"
+
+        # Direct computation of the three samples from path cell depths.
+        path_rows = [c[0] for c in path]
+        path_cols = [c[1] for c in path]
+        depths = result.h_final[path_rows, path_cols]
+        n_cells = len(path)
+        for j, f in enumerate((0.0, 0.5, 1.0)):
+            x = f * (n_cells - 1)
+            i = int(np.floor(x))
+            alpha = x - i
+            if alpha == 0.0:
+                expected = depths[i]
+            else:
+                expected = (1.0 - alpha) * depths[i] + alpha * depths[i + 1]
+            assert samples[k, j] == expected, (
+                f"edge {k}, col {j}: {samples[k, j]} != {expected}"
+            )
+
+
+def test_orchestrator_edge_depths_generated_network_canonical_ordering():
+    """Edge depths: canonical edge ordering verified against generated network.
+
+    Independently verifies that edge ids are assigned in canonical order:
+    edges sorted by (min(cell_a, cell_b), max(cell_a, cell_b)) where cells
+    are (row, col) tuples compared lexicographically (roads.py lines 209-212).
+    """
+    config = build_default_config()
+    env = build_environment(master_seed=2027, config=config)
+    network = env.road_network
+    node_rows = network.node_rows.astype(np.int64)
+    node_cols = network.node_cols.astype(np.int64)
+
+    # Collect all edge endpoint cell pairs from the network.
+    edge_pairs = []
+    for k in range(network.n_edges):
+        u_cell = (int(node_rows[network.edge_u[k]]), int(node_cols[network.edge_u[k]]))
+        v_cell = (int(node_rows[network.edge_v[k]]), int(node_cols[network.edge_v[k]]))
+        edge_pairs.append((u_cell, v_cell))
+
+    # Compute the canonical ordering independently.
+    canon_sorted = sorted(edge_pairs, key=lambda pair: (min(pair), max(pair)))
+
+    # Verify edge ids match the independently computed canonical order.
+    for k in range(network.n_edges):
+        min_cell, max_cell = canon_sorted[k]
+        u_cell = (int(node_rows[network.edge_u[k]]), int(node_cols[network.edge_u[k]]))
+        v_cell = (int(node_rows[network.edge_v[k]]), int(node_cols[network.edge_v[k]]))
+        assert (min_cell, max_cell) == (
+            min(u_cell, v_cell),
+            max(u_cell, v_cell),
+        ), f"edge {k}: not in canonical order ({min_cell}, {max_cell}) != ({min(u_cell, v_cell)}, {max(u_cell, v_cell)})"
 
 

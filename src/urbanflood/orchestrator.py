@@ -365,3 +365,322 @@ def evaluate_tc10_sensitivity(
         'result_15': result_15,
         'result_7_5': result_7_5,
     }
+
+
+def node_depths(
+    result: SimulationResult,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Final water depth at each road-network node cell.
+
+    Node-depth output contract (docs/PHASE2_NUMERICAL_SPEC.md section 14):
+
+    * What: final water depth in metres at the end of the simulation at each
+      road-network node cell. This is a final-depth output only, not a time
+      series; peak node depths are deliberately not part of this interface
+      (they remain optional and undecided).
+    * What is a node: a land cell on any road line, as defined by
+      env.road_network.node_rows / node_cols. Lake cells and ocean cells are
+      never nodes (see roads.py), so by construction every node cell is a
+      simulated surface-water cell with a defined final depth. No ocean or
+      lake special-casing is required beyond correct cell indexing.
+    * Identity and ordering: node id k indexes
+      env.road_network.node_rows[k] / node_cols[k], the row-major sorted node
+      list from roads.py. Ordering is canonical and deterministic, derived
+      only from grid geometry. Output order follows node id order.
+    * Derivation: depth[k] = result.h_final[node_rows[k], node_cols[k]].
+      Values are taken from h_final (final cell depths), not H_peak.
+    * Shape and dtype: (n_nodes,), metres. The output dtype follows
+      result.h_final exactly (no independent dtype conversion is applied);
+      the broader output container and dtype decision remains deferred
+      (spec section 17). The returned array is a fresh copy;
+      result.h_final is not modified and no aliasing is exposed.
+
+    Parameters
+    ----------
+    result : SimulationResult
+        Completed multi-timestep simulation result; h_final is used.
+    env : SyntheticEnvironment
+        Environment providing the road-network node geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Final node depths in metres, shape (n_nodes,), indexed by node id.
+        The dtype follows result.h_final.
+
+    Raises
+    ------
+    ValueError
+        If result.h_final does not match the environment grid shape.
+    """
+    h_final = np.asarray(result.h_final)
+    return _node_depths_from_cells(h_final, env)
+
+
+def _node_depths_from_cells(
+    cell_depths: np.ndarray,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Sample cell depths at road-network node cells.
+
+    Private helper shared by node_depths() and peak_node_depths(). Returns a
+    fresh copy of cell_depths indexed by the canonical node rows/cols.
+
+    Parameters
+    ----------
+    cell_depths : np.ndarray
+        Cell depths in metres, shape (n_rows, n_cols), any dtype.
+    env : SyntheticEnvironment
+        Environment providing the road-network node geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Depths at node cells, shape (n_nodes,), dtype follows cell_depths.
+        Fresh copy; no aliasing into cell_depths.
+    """
+    if cell_depths.shape != env.elevation_m.shape:
+        raise ValueError(
+            "cell_depths shape "
+            f"{cell_depths.shape} does not match environment grid shape "
+            f"{env.elevation_m.shape}"
+        )
+    node_rows = env.road_network.node_rows
+    node_cols = env.road_network.node_cols
+    # Advanced indexing always returns a copy: caller mutation cannot affect
+    # cell_depths, and no view into internal state is exposed.
+    return cell_depths[node_rows, node_cols]
+
+
+def edge_depths(
+    result: SimulationResult,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Final water-depth samples at three positions along each road-network edge.
+
+    Edge-depth output contract (docs/PHASE2_NUMERICAL_SPEC.md section 14):
+
+    * What: final water depth in metres at three positions along each
+      road-network edge: column 0 is the canonical start (0% of edge length),
+      column 1 is the geometric midpoint (50% of edge length), and column 2
+      is the canonical end (100% of edge length). This is a final-depth
+      output only, not a time series; peak edge depths are deliberately not
+      part of this interface (they remain optional and undecided).
+    * What is an edge: a road-network edge as defined by
+      env.road_network.edge_u / edge_v / edge_path_cells. Edge ids index the
+      canonically sorted edge list from roads.py. Ordering is canonical and
+      deterministic, derived only from grid geometry. Output row order
+      follows edge id order.
+    * Canonical orientation: each edge path begins at the edge_u endpoint
+      cell and ends at the edge_v endpoint cell, as guaranteed by the road
+      generator's increasing-coordinate line traversal. Path orientation is
+      preserved exactly; paths are never sorted or reversed based on
+      coordinates.
+    * Derivation: for a path containing N cells with final depths
+      h_0, ..., h_{N-1} taken from result.h_final, a fractional edge
+      position f in {0, 0.5, 1} maps to the path coordinate
+      x = f * (N - 1). Let i = floor(x) and alpha = x - i. The sample is
+      h(f) = (1 - alpha) * h_i + alpha * h_{i+1} when x is not an integer,
+      and h(f) = h_i when x is an integer. Consecutive path cells are
+      equally spaced at one cell size (50 m), so fractional positions
+      correspond to equal fractions of edge length.
+    * Bridge edges: bridge paths contain land abutments and intervening
+      lake cells. Samples falling on lake cells represent water depth in the
+      underlying lake terrain cells, not water depth on the bridge deck. The
+      current model does not simulate bridge-deck elevation, bridge
+      clearance, or bridge-deck inundation. These samples must not be used
+      to claim that a bridge is passable or impassable based solely on
+      their values.
+    * Shape and dtype: (n_edges, 3), metres. The output dtype follows
+      result.h_final exactly (no independent dtype conversion is applied);
+      the broader output container and dtype decision remains deferred
+      (spec section 17). The returned array is a fresh copy;
+      result.h_final is not modified and no aliasing is exposed.
+
+    Parameters
+    ----------
+    result : SimulationResult
+        Completed multi-timestep simulation result; h_final is used.
+    env : SyntheticEnvironment
+        Environment providing the road-network edge geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Final edge-depth samples in metres, shape (n_edges, 3), indexed by
+        edge id. Column 0 is start, column 1 is midpoint, column 2 is end.
+        The dtype follows result.h_final.
+
+    Raises
+    ------
+    ValueError
+        If result.h_final does not match the environment grid shape, or if
+        any edge path is empty or contains out-of-bounds cell indices.
+    """
+    h_final = np.asarray(result.h_final)
+    return _edge_depths_from_cells(h_final, env)
+
+
+def _edge_depths_from_cells(
+    cell_depths: np.ndarray,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Sample cell depths at three positions along each road-network edge.
+
+    Private helper shared by edge_depths() and peak_edge_depths(). Column 0 is
+    the canonical start (0% of edge length), column 1 is the geometric midpoint
+    (50%), column 2 is the canonical end (100%). Uses piecewise-linear
+    interpolation along the ordered edge_path_cells sequence.
+
+    Parameters
+    ----------
+    cell_depths : np.ndarray
+        Cell depths in metres, shape (n_rows, n_cols), any dtype.
+    env : SyntheticEnvironment
+        Environment providing the road-network edge geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Edge-depth samples, shape (n_edges, 3), dtype follows cell_depths.
+        Fresh copy; no aliasing into cell_depths.
+    """
+    if cell_depths.shape != env.elevation_m.shape:
+        raise ValueError(
+            "cell_depths shape "
+            f"{cell_depths.shape} does not match environment grid shape "
+            f"{env.elevation_m.shape}"
+        )
+
+    network = env.road_network
+    n_edges = network.n_edges
+    n_rows, n_cols = env.elevation_m.shape
+
+    # Fractional edge positions: start (0%), midpoint (50%), end (100%).
+    fractions = np.array([0.0, 0.5, 1.0])
+
+    # Output array preserves the dtype of cell_depths; no independent
+    # dtype conversion is applied (spec section 17 defers that decision).
+    output = np.empty((n_edges, 3), dtype=cell_depths.dtype)
+
+    for k in range(n_edges):
+        path = network.edge_path_cells[k]
+        n_cells = len(path)
+        if n_cells == 0:
+            raise ValueError(
+                f"edge {k} has an empty path; generator invariant violated"
+            )
+
+        # Extract depths along the path, preserving canonical orientation.
+        # path cells are (row, col) tuples ordered from edge_u to edge_v.
+        rows = np.fromiter((cell[0] for cell in path), dtype=np.int64, count=n_cells)
+        cols = np.fromiter((cell[1] for cell in path), dtype=np.int64, count=n_cells)
+
+        # Validate cell indices are within grid bounds.
+        if np.any(rows < 0) or np.any(rows >= n_rows) or np.any(cols < 0) or np.any(cols >= n_cols):
+            raise ValueError(
+                f"edge {k} path contains cell indices outside grid bounds; "
+                "generator invariant violated"
+            )
+
+        depths = cell_depths[rows, cols]
+
+        for j, f in enumerate(fractions):
+            x = f * (n_cells - 1)
+            i = int(np.floor(x))
+            alpha = x - i
+            if alpha == 0.0:
+                output[k, j] = depths[i]
+            else:
+                output[k, j] = (1.0 - alpha) * depths[i] + alpha * depths[i + 1]
+
+    return output
+
+
+def peak_node_depths(
+    result: SimulationResult,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Peak water depth at each road-network node cell.
+
+    Peak = running maximum of cell depth over the whole simulation, including
+    the initial depth (SimulationResult.H_peak is initialized from h_initial
+    and updated as the element-wise maximum with each new depth).
+
+    Sampled from result.H_peak at the canonical node cells, indexed by node id
+    order. Shape (n_nodes,), metres. Dtype follows result.H_peak exactly; no
+    independent dtype conversion is applied. The returned array is a fresh
+    copy; result.H_peak is not modified and no aliasing is exposed.
+
+    The three edge samples (see peak_edge_depths) are the same start/mid/end
+    positions as edge_depths, but sampled from H_peak. This is a SAMPLED peak
+    (start/mid/end interpolated from cell peaks), not the maximum over every
+    cell on the path.
+
+    Bridge edges follow the same caveat as edge_depths: samples falling on
+    lake cells represent peak depth in the underlying lake terrain cells, not
+    peak depth on the bridge deck. The current model does not simulate
+    bridge-deck elevation, bridge clearance, or bridge-deck inundation.
+
+    Parameters
+    ----------
+    result : SimulationResult
+        Completed multi-timestep simulation result; H_peak is used.
+    env : SyntheticEnvironment
+        Environment providing the road-network node geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Peak node depths in metres, shape (n_nodes,), indexed by node id.
+        The dtype follows result.H_peak.
+
+    Raises
+    ------
+    ValueError
+        If result.H_peak does not match the environment grid shape.
+    """
+    h_peak = np.asarray(result.H_peak)
+    return _node_depths_from_cells(h_peak, env)
+
+
+def peak_edge_depths(
+    result: SimulationResult,
+    env: SyntheticEnvironment,
+) -> np.ndarray:
+    """Peak water-depth samples at three positions along each road-network edge.
+
+    Sampled from result.H_peak at start (column 0), geometric midpoint
+    (column 1), and canonical end (column 2) using the same piecewise-linear
+    interpolation rule as edge_depths. Shape (n_edges, 3), metres. Dtype
+    follows result.H_peak exactly; no independent dtype conversion is applied.
+    The returned array is a fresh copy; result.H_peak is not modified and no
+    aliasing is exposed.
+
+    This is a SAMPLED peak (start/mid/end interpolated from cell peaks), not
+    the maximum over every cell on the path. Bridge edges follow the same caveat
+    as edge_depths.
+
+    Parameters
+    ----------
+    result : SimulationResult
+        Completed multi-timestep simulation result; H_peak is used.
+    env : SyntheticEnvironment
+        Environment providing the road-network edge geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Peak edge-depth samples in metres, shape (n_edges, 3), indexed by edge
+        id. Column 0 is start, column 1 is midpoint, column 2 is end.
+        The dtype follows result.H_peak.
+
+    Raises
+    ------
+    ValueError
+        If result.H_peak does not match the environment grid shape, or if any
+        edge path is empty or contains out-of-bounds cell indices.
+    """
+    h_peak = np.asarray(result.H_peak)
+    return _edge_depths_from_cells(h_peak, env)

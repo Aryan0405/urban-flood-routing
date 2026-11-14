@@ -253,29 +253,86 @@ implements:
 - Option A lake initialisation from recorded spill levels
 
 TC7 (mass ledger), TC8 (toy problems), and TC14 (bitwise canonical-order
-invariance) pass at the single-timestep level. TC11 (face-count
+invariance) pass at the single-timestep level. TC14 H_peak permutation
+invariance is also verified at the multi-timestep orchestration level
+(via run_simulation() with permuted face generation order). TC11 (face-count
 proportionality) verified at single-timestep and six-hour levels:
 dt=30s yields 12,032,640 total evaluations (16,712 per step x 720 steps);
 dt=15s yields 24,065,280 total evaluations (16,712 per step x 1440 steps);
-ratio exactly 2.0. H_peak is a simulation-level
-accumulated output, deferred until multi-timestep orchestration exists;
-TC10 dt sensitivity (dt = 15 s) and TC12 rainfall bookkeeping require
-multi-timestep execution and are deferred to the next milestone.
+ratio exactly 2.0. TC10 dt sensitivity (dt = 15 s) and TC12 rainfall
+bookkeeping have been implemented and verified at multi-timestep level.
 
-### Test results (actually executed, final run)
+### Test results (actually executed)
 
-Command: `.\.venv\Scripts\python.exe -m pytest -q`
-Result: 198 passed, 0 failed, 0 failed in ~1.5 s
-Platform: win32, Python 3.11.9 (project .venv), pytest 9.2.0
-
-Breakdown:
+Quick tests (freshly executed in Stage 8):
+- py_compile: successful on tests/test_orchestrator.py
 - tests/test_timestep.py: 19 passed (TC7, TC8, TC11 single-timestep, TC14 single-timestep)
-- tests/test_orchestrator.py: 41 passed (includes TC11 six-hour proportionality, TC12 rainfall normalization)
-- Full suite: 198 passed, 0 failed (including TC6 ASCII scan)
+- New simulation-level TC14 H_peak permutation invariance: 1 passed, 43 deselected
+- Existing single-timestep TC14: 1 passed, 18 deselected
+- Quick orchestrator regression (excluding six-hour, TC12 rainfall, TC11 face-count): 41 passed, 3 deselected
 
-Remaining Phase 2 multi-timestep items (H_peak simulation-level permutation
-invariance, node depths, edge depth samples, output container/dtypes) are
-deferred to the next milestone.
+Six-hour tests (previously executed in Stages 5-6, historical):
+- test_orchestrator_six_hour_execution: passed
+- test_orchestrator_tc12_rainfall_normalization: passed (dt=30s and dt=15s, zero error)
+- test_orchestrator_tc11_face_count_proportionality: passed (ratio exactly 2.0)
+
+### Stage 9: Node-depth outputs - IMPLEMENTED (freshly executed)
+
+Node-depth output contract (docs/PHASE2_NUMERICAL_SPEC.md section 14):
+
+- What: final water depth in metres at each road-network node cell at the end
+  of the simulation. Final depths only (not a time series); peak node depths
+  are not part of the required interface (optional and undecided).
+- What is a node: a land cell on any road line, given by
+  env.road_network.node_rows / node_cols. Lake and ocean cells are never nodes
+  (roads.py), so every node cell is a simulated surface-water cell with a
+  defined final depth. No ocean/lake special-casing is required beyond correct
+  cell indexing.
+- Identity and ordering: node id k indexes node_rows[k] / node_cols[k], the
+  row-major sorted node list from roads.py. Ordering is canonical and
+  deterministic, derived only from grid geometry. Output order follows node id
+  order.
+- Derivation: depth[k] = result.h_final[node_rows[k], node_cols[k]]. Values are
+  taken from h_final (final cell depths), not H_peak. result.h_final is not
+  modified; the returned array is a fresh copy (no aliasing).
+- Shape and dtype: (n_nodes,), metres. The output dtype follows result.h_final
+  exactly; no independent dtype conversion or forced float64 is applied. The
+  broader output container/dtype decision remains deferred (spec section 17).
+- Scope: implemented as orchestrator.node_depths(result, env). Does not change
+  rainfall, tide, routing, face enumeration, timestep logic, mass accounting,
+  or edge-depth outputs. No new physical assumptions or interpolation rules.
+
+Implementation: new function node_depths() in src/urbanflood/orchestrator.py.
+
+Test results (freshly executed in Stage 9):
+- New focused node-depth tests in tests/test_orchestrator.py: 5 passed
+  (contract on real simulation, final-depth-not-peak, node-id ordering,
+  mismatched-shape rejection, dtype preservation for float32 source).
+- tests/test_timestep.py: 19 passed (unchanged).
+- tests/test_numerics.py: 48 passed (unchanged).
+- test_orchestrator.py fast suite (excluding six-hour, tc12_rainfall,
+  tc11_face_count): 46 passed, 3 deselected (41 historical fast tests +
+  5 new node-depth tests).
+- test_orchestrator_six_hour_execution: 1 passed in 770.56 s
+  (TC7 mass balance < 1e-9; TC10 criteria pass). Confirms existing numerical
+  behaviour is unchanged by the additive node_depths function.
+
+Historical results (kept separate, from Stages 5-8):
+- test_orchestrator_six_hour_execution: passed (Stage 8)
+- test_orchestrator_tc12_rainfall_normalization: passed (dt=30s and dt=15s,
+  zero error) (Stage 8)
+- test_orchestrator_tc11_face_count_proportionality: passed (ratio exactly
+  2.0) (Stage 8)
+- Quick orchestrator regression: 41 passed, 3 deselected (Stage 8)
+- tests/test_timestep.py: 19 passed (Stage 8)
+- Single-timestep TC14: 1 passed, 18 deselected (Stage 8)
+- Simulation-level TC14 H_peak permutation invariance: 1 passed, 43 deselected
+  (Stage 8)
+
+Remaining Phase 2 multi-timestep items: edge-depth samples and output
+container/dtype decisions are deferred to the next milestone. H_peak cell-level
+peak output already exists in SimulationResult; peak node/peak edge depths
+remain optional and undecided.
 
 ## Phase 0: Scaffold and configuration - COMPLETE
 
