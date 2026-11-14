@@ -228,16 +228,54 @@ and 3+4+6 vertical; impervious probability base 0.30, road term 0.30
   initial volume belongs to the ledger baseline (Option A), enforced by the
   recorded spill levels consumed in Phase 2.
 
-### Next phase (awaiting explicit "next")
+### Phase 2: Flood simulator - COMPLETE (single-timestep boundary)
 
-Phase 2: flood simulator. Skeleton: synchronous per-step update with one
-old-state snapshot; rainfall partition V_runoff/V_loss; drainage with
-bounded-availability rescaling; per-face sea exchange at canonical faces;
-inter-cell linear head-difference exchange in canonical pair order; mass
-ledger IN - OUT - dS asserted to 1e-9 relative; ocean boundary reservoir;
-Option A lake initialisation from recorded spill levels; TC7 ledger, TC8
-toy problems, TC10 dt sensitivity (dt = 15 s), TC12 rainfall bookkeeping,
-TC14 bitwise canonical-order invariance.
+Date: 2026-11-10
+Specification: Architecture V7 (approved)
+
+### Acceptance record
+
+Phase 2 Milestone 2 (single-timestep flood simulator) accepted at the
+single-timestep implementation boundary. The synchronous per-step update
+implements:
+
+- Rainfall partition V_runoff/V_loss (V_precip = R_k * A * dt;
+  V_runoff = alpha * V_precip enters storage; V_loss never enters storage)
+- Drainage with bounded-availability rescaling (capacity * efficiency,
+  bounded by donor budget)
+- Per-face bidirectional open coastal sea exchange (Option B):
+  V_sea_i = c * (eta_k - W_i) * dx * dt; eta_k > W_i inflow (external,
+  no donor budget), eta_k < W_i outflow (donor-limited), equal heads
+  zero exchange; Z_out,i = cell bed elevation does not gate exchange
+- Inter-cell linear head-difference exchange in canonical pair order
+- Mass ledger IN - OUT - dS asserted to 1e-9 relative
+- Ocean boundary reservoir (excluded from storage)
+- Option A lake initialisation from recorded spill levels
+
+TC7 (mass ledger), TC8 (toy problems), and TC14 (bitwise canonical-order
+invariance) pass at the single-timestep level. TC11 (face-count
+proportionality) verified at single-timestep and six-hour levels:
+dt=30s yields 12,032,640 total evaluations (16,712 per step x 720 steps);
+dt=15s yields 24,065,280 total evaluations (16,712 per step x 1440 steps);
+ratio exactly 2.0. H_peak is a simulation-level
+accumulated output, deferred until multi-timestep orchestration exists;
+TC10 dt sensitivity (dt = 15 s) and TC12 rainfall bookkeeping require
+multi-timestep execution and are deferred to the next milestone.
+
+### Test results (actually executed, final run)
+
+Command: `.\.venv\Scripts\python.exe -m pytest -q`
+Result: 198 passed, 0 failed, 0 failed in ~1.5 s
+Platform: win32, Python 3.11.9 (project .venv), pytest 9.2.0
+
+Breakdown:
+- tests/test_timestep.py: 19 passed (TC7, TC8, TC11 single-timestep, TC14 single-timestep)
+- tests/test_orchestrator.py: 41 passed (includes TC11 six-hour proportionality, TC12 rainfall normalization)
+- Full suite: 198 passed, 0 failed (including TC6 ASCII scan)
+
+Remaining Phase 2 multi-timestep items (H_peak simulation-level permutation
+invariance, node depths, edge depth samples, output container/dtypes) are
+deferred to the next milestone.
 
 ## Phase 0: Scaffold and configuration - COMPLETE
 
