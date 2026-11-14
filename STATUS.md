@@ -240,9 +240,12 @@ and all end-to-end tests (six-hour test, TC12, node-depths, edge-depths,
 stage15_diagnostic) were switched from np.zeros initial depth to
 build_initial_depth(env).
 
-### Phase 2: Flood simulator - COMPLETE (single-timestep boundary)
+### Phase 2: Flood simulator - COMPLETE
 
 Date: 2026-11-10
+
+The single-timestep boundary was extended by Stages 9 to 11 (node, edge and
+peak outputs).
 Specification: Architecture V7 (approved)
 
 ### Acceptance record
@@ -346,7 +349,9 @@ Historical results (kept separate, from Stages 5-8):
 - edge_depths(result, env) in src/urbanflood/orchestrator.py returns final
   water-depth samples at three positions along each road-network edge, shape
   (n_edges, 3), metres, start/mid/end rule from docs/PHASE2_NUMERICAL_SPEC.md
-  section 14. 12 tests in tests/test_peak_outputs.py (shared with peak tests).
+  section 14. tests: the edge_depths tests in tests/test_orchestrator.py
+  (selected by -k edge_depths) plus final-depth fresh-copy tests in
+  tests/test_peak_outputs.py.
 
 ### Stage 10b: Option A initial-depth builder - IMPLEMENTED
 
@@ -371,7 +376,7 @@ Historical results (kept separate, from Stages 5-8):
   rule as edge_depths. SAMPLED peak (start/mid/end interpolated from cell
   peaks), not the maximum over every path cell.
 - Both return fresh copies, dtype follows source, validate grid shape.
-- 12 tests in tests/test_peak_outputs.py.
+- 14 tests in tests/test_peak_outputs.py.
 - This is a design addition; the definition of effective edge depth d_e is NOT
   yet defined in RoadConfig and remains a Phase 4 specification item
   (proposed: d_e = max of the three peak samples, not yet approved).
@@ -523,6 +528,19 @@ changed; no history rewrite; branch is main tracking origin/main.
   tests were added).
 - Total collected tests: 286 (from pytest --collect-only). Pass/fail counts
   for the post-Stage-11 full suite are not recorded.
+- Full quick suite after Stage 11 (six-hour test deselected): 283 passed, 1
+  deselected in 696.63 s. Two further fresh-copy tests were added afterwards;
+  the total collected is now 286.
+- Peak versus final edge depth, Scenario R, seed 2027, Option A initial state,
+  six-hour run; effective depth is the max over the 3 samples per edge; 2355
+  edges: closure threshold 0.20 m: 269 edges closed using final depth, 440
+  using peak. Threshold 0.30 m: 234 using final, 396 using peak. Threshold
+  0.45 m: 181 using final, 317 using peak. 427 edges have peak minus final
+  greater than 0.05 m. Recorded conclusion: routing must consume peak edge
+  depths; final depths understate closures by about 41 percent at the default
+  0.30 m threshold (234 versus 396).
+- Limitation: peak edge depth is sampled at 3 positions (start, midpoint, end),
+  so a flooded stretch between samples can be missed.
 
 ### Decisions recorded
 
@@ -545,9 +563,99 @@ changed; no history rewrite; branch is main tracking origin/main.
 
 ### Open items
 
-- Stage 16B / Phase 3 specification still pending.
-- S1/S2/S3 never simulated through run_simulation (configured and unit-tested
-  only).
 - film_threshold_depth_m (0.005 m) unused in Phase 2; no role established.
 - Bridge-deck inundation not modelled; edge-depth samples on bridge/lake cells
   represent underlying lake terrain cell depth, not deck depth.
+- Phase 4 specification: see docs/PHASE4_ROUTING_SPEC.md.
+
+## Phase 3: Susceptibility index and Experiment A - COMPLETE
+
+Date: 2026-11-13
+Specification: Architecture V7 (approved); Phase 3 additions adopted
+(author-delegated, Stage 12); docs/PHASE3_SUSCEPTIBILITY_SPEC.md.
+
+### Modules
+
+- `src/urbanflood/susceptibility.py`: build_susceptibility(env, cfg) ->
+  SusceptibilityResult; static weighted susceptibility index from terrain,
+  land cover, and water masks only; leakage-free (never imports or reads
+  drainage, outfalls, simulated depths, H_peak, simulator, orchestrator,
+  initial_state, or roads).
+- `src/urbanflood/experiment_a.py`: spearman, roc_auc, top_decile_lift,
+  ablated_index, permuted_scores, evaluate_methods, summarize; pure
+  functions importing only numpy and scipy.stats; no urbanflood imports.
+- `run_experiment_a.py`: experiment runner at repository root; builds
+  environments, runs simulations, writes results.csv and summary.txt;
+  resumable via cached .npy files; refuses --out inside the repository.
+
+### Docs
+
+- `docs/PHASE3_SUSCEPTIBILITY_SPEC.md`: feature scores (elevation, TPI,
+  water distance, land cover, slope), index weights, Experiment A
+  specification, layer separation test (TC4), and Experiment A results
+  (section 9).
+- `docs/experiment_a/`: results.csv, summary.txt, README.txt from the
+  Experiment A run (5 seeds x 4 scenarios = 20 runs).
+
+### Tests
+
+- tests/test_susceptibility.py: 17 tests (feature scores on toy fixtures,
+  weighted sum, range/masks, determinism, TC4 structural and behavioural,
+  clip fractions, multi-seed, index statistics).
+- tests/test_experiment_a.py: 30 tests (spearman, roc_auc, top_decile_lift,
+  ablated_index, permuted_scores, evaluate_methods fields, import
+  isolation, summarize wins/losses/ties/skipped/mean-diff, missing seed,
+  NaN handling, cross-product vs per-seed pairing, all seven metrics,
+  all scenarios present).
+- Collected test count for these two files: 47 (from pytest
+  --collect-only).
+
+### Pointer
+
+- Full results in docs/experiment_a/.
+
+### Results summary (Experiment A, mean over 5 seeds, land cells)
+
+- auc_030: R index 0.722172 vs elevation_only 0.668987 vs random 0.500241;
+  S1 index 0.741037 vs elevation_only 0.700976; S2 index 0.819635 vs
+  elevation_only 0.782328; S3 index 0.724680 vs elevation_only 0.672852.
+- spearman: R index 0.363357 vs elevation_only 0.270281; S1 index 0.373064
+  vs elevation_only 0.278820; S2 index 0.423517 vs elevation_only 0.332318;
+  S3 index 0.363685 vs elevation_only 0.270684.
+- index vs elevation_only on auc_030 (per-seed paired): wins 5 of 5 in
+  each of R, S1, S2, S3; mean differences R 0.053185, S1 0.040060,
+  S2 0.037307, S3 0.051828.
+- Elevation clip on seed 2027: 19.6 percent of scored cells above the 40 m
+  bound score 0 on the elevation feature.
+- First end-to-end simulation of scenarios S1, S2, S3 completed (20 runs,
+  720 steps, dt 30 s); scenario R had been run earlier.
+
+### Correction note
+
+Statement (b) in docs/PHASE3_SUSCEPTIBILITY_SPEC.md section 9 was corrected:
+S3 lift_030 was previously misreported; elevation-only has higher top-decile
+lift at 0.30 m in S1, S2, and marginally S3 (3.362287 vs 3.352162), while the
+index is higher at 0.30 m only in R (3.341657 vs 3.288309).
+
+## Phase 4: Routing and Experiment C - IN PROGRESS
+
+- `src/urbanflood/routing.py`: effective_edge_depth, sample_od_pairs,
+  policy_costs, solve_routes, route_metrics; pure functions importing only
+  numpy, networkx, dataclasses, typing, collections.abc, __future__; no
+  urbanflood imports; 35 tests (from pytest --collect-only).
+- `tests/test_routing.py`: effective_edge_depth, sample_od_pairs,
+  policy_costs, solve_routes, route_metrics, P0/policy consistency, layer
+  structure, determinism, timing; 35 tests.
+- `src/urbanflood/experiment_c.py`: aggregate_policy_rows,
+  check_policy_invariants; pure functions importing only numpy,
+  dataclasses, typing, collections.abc, __future__; no urbanflood imports.
+- `tests/test_experiment_c.py`: aggregate_policy_rows,
+  check_policy_invariants, import isolation; 11 tests
+  (from pytest --collect-only).
+- `run_experiment_c.py`: experiment runner at repository root; runs
+  Experiment C using cached Experiment A H_peak arrays; writes pairs.csv,
+  edge_summary.csv, summary.csv, summary.txt, run_meta_c.txt; includes
+  cache guard (refuses --out inside repo and mismatched steps/dt).
+- Experiment C full run: not yet executed (pending).
+
+## Phase 0: Scaffold and configuration - COMPLETE

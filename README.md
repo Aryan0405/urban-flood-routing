@@ -85,9 +85,9 @@ testing only; no external validity is claimed anywhere).
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Scaffold and configuration | complete |
-| 1 | Environment generation (terrain, land cover, drainage, weather, roads) | complete (pending commit approval) |
+| 1 | Environment generation (terrain, land cover, drainage, weather, roads) | complete |
 | 2 | Flood simulator and dt sensitivity | complete |
-| 3 | Susceptibility index and Experiment A | pending |
+| 3 | Susceptibility index and Experiment A | complete |
 | 4 | Routing and Experiment C | pending |
 | 5 | Streamlit application (5 sections) | pending |
 | 6 | Closeout and documentation | pending |
@@ -183,7 +183,45 @@ mechanism in real Mumbai events, is structurally underrepresented.
   drainage on lake cells changed no land flood peak (max land H_peak 2.7505 m
   in both runs) and left the count of road nodes with peak depth above 0.30 m
   unchanged (252 in both). Documented as a modelling limitation, not tuned.
-- Only Scenario R has been simulated end to end so far; S1, S2, S3 are
-  configured and unit-tested but not yet run through run_simulation.
+- All four scenarios (R, S1, S2, S3) were simulated end to end for the
+  five experiment seeds in Experiment A (20 runs, 720 steps, dt 30 s);
+  results in docs/experiment_a/.
 - The flood simulator is a simplified water-balance model; all existing
   README limitation text stays.
+
+## Experiment A (synthetic recovery testing)
+
+Experiment A compared the static susceptibility index against simulated
+peak depths (target = H_peak - h_initial on LAND cells) across 5
+environment seeds x 4 scenarios (R, S1, S2, S3) = 20 seed-scenario pairs,
+using cached H_peak arrays from the simulator. Full results are in
+docs/experiment_a/.
+
+Key numbers (mean over 5 seeds, land cells):
+
+- auc_030 (flooded >= 0.30 m): R index 0.722172 vs elevation-only 0.668987
+  vs random 0.500241; S1 index 0.741037 vs elevation-only 0.700976; S2
+  index 0.819635 vs elevation-only 0.782328; S3 index 0.724680 vs
+  elevation-only 0.672852.
+- spearman: R index 0.363357 vs elevation-only 0.270281; S1 index 0.373064
+  vs elevation-only 0.278820; S2 index 0.423517 vs elevation-only
+  0.332318; S3 index 0.363685 vs elevation-only 0.270684.
+- index vs elevation-only on auc_030 (per-seed paired): wins 5 of 5 in
+  each of R, S1, S2, S3; mean differences R 0.053185, S1 0.040060,
+  S2 0.037307, S3 0.051828.
+
+Caveats:
+
+- The elevation-only baseline has higher top-decile lift at the 0.10 m
+  threshold in every scenario and at 0.30 m in S1 and S2, so the index
+  does not dominate on every metric.
+- The declared weights are not optimal: removing the elevation feature
+  gave a higher auc_030 than the full index in all four scenarios, and
+  removing TPI gave the lowest; the weights were declared before the
+  experiment and were NOT re-fitted, because tuning on the evaluation
+  target would break the leakage-free claim.
+- Five environments from one generator support "consistent across seeds",
+  not statistical significance.
+- Absolute AUC 0.72 to 0.82 is moderate ranking ability, not forecasting
+  skill; synthetic recovery only. No route in this project is ever
+  described as "safe".
