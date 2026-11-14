@@ -679,6 +679,9 @@ Specification: Architecture V7 (approved); Phase 4 additions adopted
   Mumbai claim.
 Tests collected at Stage 17: 379 (pytest --collect-only); full suite not
 re-run since Experiment C.
+Full quick suite at Phase 6 (six-hour test deselected): 408 passed and
+1 failed in 348.65 s before the guard test was fixed in Stage 22;
+result of the rerun: not recorded.
 
 ### Commit state
 
@@ -686,7 +689,7 @@ Phase 4 is complete and documented (docs/experiment_c/ plus docs/
 PHASE4_ROUTING_SPEC.md section 14); no code changes remain pending for
 Phase 4.
 
-## Phase 5: Streamlit application - IN PROGRESS
+## Phase 5: Streamlit application - COMPLETE
 
 - `app.py`: Streamlit app at repository root; 5 sidebar pages (Overview,
   Susceptibility (Experiment A), Flood scenarios, Routing explorer,
@@ -712,5 +715,15 @@ Phase 4.
 ### Commit state
 
 Phase 5 application built; final review pending.
+
+## Phase 6: Closeout - IN PROGRESS
+
+- Guard-test fix (Stage 22): replaced the stale
+  test_initial_state_no_susceptibility_module_yet assertion (which failed
+  once Phase 3 added susceptibility.py) with
+  test_simulator_layers_do_not_import_susceptibility, an AST check that
+  initial_state.py, simulator.py, orchestrator.py, numerics.py and
+  drainage.py do not import urbanflood.susceptibility.
+- Pending: README how-to-run section, final push.
 
 ## Phase 0: Scaffold and configuration - COMPLETE

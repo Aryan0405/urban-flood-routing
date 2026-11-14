@@ -7,7 +7,6 @@ pattern from tests/test_environment.py (build_default_config + build_environment
 from __future__ import annotations
 
 import ast
-import glob
 import importlib
 import inspect
 
@@ -219,9 +218,28 @@ def test_initial_state_layer_separation_no_drainage_import():
     )
 
 
-def test_initial_state_no_susceptibility_module_yet():
-    """Placeholder structural check: no susceptibility*.py imports initial_state."""
-    susceptibility_files = glob.glob("src/urbanflood/susceptibility*.py")
-    assert len(susceptibility_files) == 0, (
-        f"unexpected susceptibility files: {susceptibility_files}"
-    )
+def test_simulator_layers_do_not_import_susceptibility():
+    """Replaced structural check: simulator-layer modules must not import
+    urbanflood.susceptibility.
+
+    The original test (test_initial_state_no_susceptibility_module_yet) was
+    written before Phase 3 and asserted that no susceptibility*.py file
+    exists in src/urbanflood/. Phase 3 added src/urbanflood/susceptibility.py
+    legitimately, so that file-existence assertion is stale. This test keeps
+    the protective intent: initial_state.py and the simulator-layer modules
+    (simulator, orchestrator, numerics, drainage) must not import
+    urbanflood.susceptibility.
+    """
+    for module_name in (
+        "urbanflood.initial_state",
+        "urbanflood.simulator",
+        "urbanflood.orchestrator",
+        "urbanflood.numerics",
+        "urbanflood.drainage",
+    ):
+        names = _imported_module_names(module_name)
+        assert not any(
+            n == "urbanflood.susceptibility"
+            or n.startswith("urbanflood.susceptibility.")
+            for n in names
+        ), f"{module_name} imports susceptibility: {names}"
