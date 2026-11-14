@@ -26,6 +26,7 @@ from urbanflood.rng import STREAM_OD_PAIRS, derive_stream_seed
 from urbanflood.routing import (
     effective_edge_depth,
     policy_costs,
+    route_metrics,
     sample_od_pairs,
     solve_routes,
 )
@@ -212,4 +213,69 @@ def count_pairs(rows: List[dict]) -> dict:
         "index_auc_wins_030": index_auc_wins,
         "elevation_lift_wins_030": elevation_lift_wins,
     }
+
+
+def depth_stats(env, hpeak: np.ndarray, d_e: np.ndarray) -> dict:
+    """Depth and closure statistics over land cells.
+
+    Land = not ocean and not lake. Returns dict with:
+    max_peak_m (max over land cells), max_peak_lake_m (max over lake cells,
+    0.0 if none), share_land_ge_010, share_land_ge_030, share_land_ge_045,
+    closed_020, closed_030, closed_045.
+    """
+    land_mask = ~(env.is_ocean | env.is_lake)
+    lake_mask = env.is_lake
+    land_cells = int(np.sum(land_mask))
+    lake_cells = int(np.sum(lake_mask))
+    hpeak_land = hpeak[land_mask]
+    if land_cells > 0:
+        max_peak_m = float(np.max(hpeak_land))
+        share_010 = float(np.sum(hpeak_land >= 0.10) / land_cells)
+        share_030 = float(np.sum(hpeak_land >= 0.30) / land_cells)
+        share_045 = float(np.sum(hpeak_land >= 0.45) / land_cells)
+    else:
+        max_peak_m = 0.0
+        share_010 = 0.0
+        share_030 = 0.0
+        share_045 = 0.0
+    if lake_cells > 0:
+        max_peak_lake_m = float(np.max(hpeak[lake_mask]))
+    else:
+        max_peak_lake_m = 0.0
+    return {
+        "max_peak_m": max_peak_m,
+        "max_peak_lake_m": max_peak_lake_m,
+        "share_land_ge_010": share_010,
+        "share_land_ge_030": share_030,
+        "share_land_ge_045": share_045,
+        "closed_020": int(np.sum(d_e >= 0.20)),
+        "closed_030": int(np.sum(d_e >= 0.30)),
+        "closed_045": int(np.sum(d_e >= 0.45)),
+    }
+
+
+def route_summary(env, d_e: np.ndarray, edge_ids) -> dict | None:
+    """Route summary: length_m, free_flow_time_s, mean_d_e (length weighted),
+    max_d_e, n_edges. None input returns None. Uses routing.route_metrics.
+    """
+    if edge_ids is None:
+        return None
+    network = env.road_network
+    edge_ids_t = tuple(int(e) for e in edge_ids)
+    m = route_metrics(
+        edge_ids_t,
+        network.edge_length_m,
+        network.edge_free_flow_time_s,
+        d_e,
+        0.10,
+        None,
+    )
+    return {
+        "length_m": float(m["length_m"]),
+        "free_flow_time_s": float(m["free_flow_time_s"]),
+        "mean_d_e": float(m["mean_d_e_length_weighted"]),
+        "max_d_e": float(m["max_d_e"]),
+        "n_edges": int(m["n_edges"]),
+    }
+
 

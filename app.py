@@ -1,4 +1,4 @@
-r"""Streamlit app: synthetic flood recovery explorer (data layer + pages 1-2).
+r"""Streamlit app: synthetic flood recovery explorer (data layer + pages 1-4).
 
 Do not run with `streamlit run` here; this file is created for review and
 parsed with ast.parse. Everything is SYNTHETIC; no real-world or Mumbai claim.
@@ -28,11 +28,14 @@ from urbanflood.app_core import (  # noqa: E402
     APP_DATA_DIR,
     build_d_e,
     build_env,
+    compute_routes,
     count_pairs,
+    depth_stats,
     load_experiment_a_rows,
     load_hpeak,
     load_manifest,
     reachable_count,
+    route_summary,
     summarize_experiment_a,
 )
 from urbanflood.app_data import SCENARIO_NAMES  # noqa: E402
@@ -51,6 +54,8 @@ PAGES = [
 
 LAM = 0.0
 CLOSURE_THRESHOLD = 0.30
+THRESHOLD_OPTIONS = (0.20, 0.30, 0.45)
+LAMBDA_OPTIONS = (0, 0.5, 1, 2, 5, 10)
 
 
 def _set_page_config() -> None:
@@ -59,6 +64,15 @@ def _set_page_config() -> None:
 
 def _banner() -> None:
     st.error(BANNER)
+
+
+# ---------------------------------------------------------------------------
+# Cached data helpers
+# ---------------------------------------------------------------------------
+
+@st.cache_resource
+def _cached_build_env(seed_index: int):
+    return build_env(seed_index)
 
 
 @st.cache_data
@@ -72,54 +86,155 @@ def _cached_hpeak(seed_index: int, scenario: str, app_data_dir: str):
 
 
 @st.cache_data
+def _cached_d_e(seed_index: int, scenario: str, app_data_dir: str):
+    env, _cfg = _cached_build_env(seed_index)
+    hpeak = _cached_hpeak(seed_index, scenario, app_data_dir)
+    return build_d_e(env, hpeak)
+
+
+@st.cache_data
+def _cached_compute_routes(
+    seed_index: int, scenario: str, threshold_m: float, lam: float,
+    pair_index: int, app_data_dir: str,
+):
+    env, _cfg = _cached_build_env(seed_index)
+    d_e = _cached_d_e(seed_index, scenario, app_data_dir)
+    return compute_routes(env, d_e, threshold_m, lam, pair_index)
+
+
+@st.cache_data
+def _cached_reachable_count(
+    seed_index: int, scenario: str, threshold_m: float, lam: float,
+    app_data_dir: str,
+):
+    env, _cfg = _cached_build_env(seed_index)
+    d_e = _cached_d_e(seed_index, scenario, app_data_dir)
+    return reachable_count(env, d_e, threshold_m, lam)
+
+
+@st.cache_data
 def _cached_experiment_a_rows(path: str):
     return load_experiment_a_rows(Path(path))
 
 
-def _draw_map(env) -> plt.Figure:
+# ---------------------------------------------------------------------------
+# Map helpers
+# ---------------------------------------------------------------------------
+
+def _base_map(ax, env, draw_roads: bool = True):
+    """Draw land elevation, ocean, lake, and (optionally) roads on ax.
+
+    Returns the elevation mappable (for a colour bar). No legend, no title.
+    """
     network = env.road_network
-    fig, ax = plt.subplots(figsize=(6, 6))
 
     # Land-only elevation: terrain colormap sampled from 0.25 to 1.0
     terrain_colors = plt.get_cmap("terrain")(np.linspace(0.25, 1.0, 256))
-    land_cmap = mcolors.LinearSegmentedColormap.from_list("land_terrain", terrain_colors)
+    land_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "land_terrain", terrain_colors
+    )
     land_mask = ~(env.is_ocean | env.is_lake)
     land_elev = np.ma.masked_where(~land_mask, env.elevation_m)
-    im = ax.imshow(land_elev, origin="upper", cmap=land_cmap, interpolation="nearest")
+    im = ax.imshow(
+        land_elev, origin="upper", cmap=land_cmap, interpolation="nearest"
+    )
 
     # Ocean cells: flat blue; lake cells: flat teal (no colormap)
-    ocean_disp = np.ma.masked_where(~env.is_ocean, np.ones_like(env.elevation_m, dtype=float))
-    lake_disp = np.ma.masked_where(~env.is_lake, np.ones_like(env.elevation_m, dtype=float))
-    ax.imshow(ocean_disp, origin="upper", cmap=mcolors.ListedColormap(["#1f77b4"]), alpha=0.8, interpolation="nearest")
-    ax.imshow(lake_disp, origin="upper", cmap=mcolors.ListedColormap(["#008080"]), alpha=0.8, interpolation="nearest")
-
-    # Colour bar for land elevation
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("land elevation (m)")
-
-    # Road network: one LineCollection
-    rows = network.node_rows.astype(np.int64)
-    cols = network.node_cols.astype(np.int64)
-    segments = [
-        [(cols[int(u)], rows[int(u)]), (cols[int(v)], rows[int(v)])]
-        for u, v in zip(network.edge_u.astype(np.int64), network.edge_v.astype(np.int64))
-    ]
-    lc = LineCollection(
-        segments, colors="black", linewidths=0.6, alpha=0.7
+    ocean_disp = np.ma.masked_where(
+        ~env.is_ocean, np.ones_like(env.elevation_m, dtype=float)
     )
-    ax.add_collection(lc)
+    lake_disp = np.ma.masked_where(
+        ~env.is_lake, np.ones_like(env.elevation_m, dtype=float)
+    )
+    ax.imshow(
+        ocean_disp,
+        origin="upper",
+        cmap=mcolors.ListedColormap(["#1f77b4"]),
+        alpha=0.8,
+        interpolation="nearest",
+    )
+    ax.imshow(
+        lake_disp,
+        origin="upper",
+        cmap=mcolors.ListedColormap(["#008080"]),
+        alpha=0.8,
+        interpolation="nearest",
+    )
 
-    # Legend: ocean, lake, road
-    ocean_patch = mpatches.Patch(color="#1f77b4", label="ocean")
-    lake_patch = mpatches.Patch(color="#008080", label="lake")
-    road_line = mlines.Line2D([0], [0], color="black", lw=1.0, label="road")
-    ax.legend(handles=[ocean_patch, lake_patch, road_line], loc="lower right", fontsize=8)
+    if draw_roads:
+        # Road network: one LineCollection
+        rows = network.node_rows.astype(np.int64)
+        cols = network.node_cols.astype(np.int64)
+        segments = [
+            [(cols[int(u)], rows[int(u)]), (cols[int(v)], rows[int(v)])]
+            for u, v in zip(
+                network.edge_u.astype(np.int64),
+                network.edge_v.astype(np.int64),
+            )
+        ]
+        lc = LineCollection(
+            segments, colors="black", linewidths=0.6, alpha=0.7
+        )
+        ax.add_collection(lc)
 
     ax.set_xticks([])
     ax.set_yticks([])
+    return im
+
+
+def _draw_closed_edges(ax, network, closed_edge_ids):
+    """Draw closed edges as one red LineCollection."""
+    if not closed_edge_ids:
+        return
+    rows = network.node_rows.astype(np.int64)
+    cols = network.node_cols.astype(np.int64)
+    segments = []
+    for eid in closed_edge_ids:
+        u = int(network.edge_u[eid])
+        v = int(network.edge_v[eid])
+        segments.append([(cols[u], rows[u]), (cols[v], rows[v])])
+    if segments:
+        lc = LineCollection(segments, colors="red", linewidths=1.2)
+        ax.add_collection(lc)
+
+
+def _draw_route(ax, network, edge_ids, color, linewidth=2.5):
+    """Draw one route as a LineCollection. None/empty edge_ids draws nothing."""
+    if edge_ids is None or len(edge_ids) == 0:
+        return
+    rows = network.node_rows.astype(np.int64)
+    cols = network.node_cols.astype(np.int64)
+    segments = []
+    for eid in edge_ids:
+        u = int(network.edge_u[eid])
+        v = int(network.edge_v[eid])
+        segments.append([(cols[u], rows[u]), (cols[v], rows[v])])
+    if segments:
+        lc = LineCollection(segments, colors=color, linewidths=linewidth)
+        ax.add_collection(lc)
+
+
+def _draw_map(env):
+    """Page 1 map: unchanged output (base map + colour bar + legend + title)."""
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = _base_map(ax, env, draw_roads=True)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("land elevation (m)")
+    ocean_patch = mpatches.Patch(color="#1f77b4", label="ocean")
+    lake_patch = mpatches.Patch(color="#008080", label="lake")
+    road_line = mlines.Line2D([0], [0], color="black", lw=1.0, label="road")
+    ax.legend(
+        handles=[ocean_patch, lake_patch, road_line],
+        loc="lower right",
+        fontsize=8,
+    )
     ax.set_title("Elevation with water masks and road network")
     return fig
 
+
+# ---------------------------------------------------------------------------
+# Pages
+# ---------------------------------------------------------------------------
 
 def _page_overview(app_data_dir: str) -> None:
     st.header("Overview")
@@ -128,13 +243,14 @@ def _page_overview(app_data_dir: str) -> None:
     sel = st.selectbox(
         "Seed index (shows seed number)",
         indices,
+        key="overview_seed",
         format_func=lambda i: "index %d  ->  seed %d" % (i, manifest[i]),
     )
-    env, cfg = build_env(sel)
+    env, cfg = _cached_build_env(sel)
     hpeak = _cached_hpeak(sel, "R", app_data_dir)
-    d_e = build_d_e(env, hpeak)
+    d_e = _cached_d_e(sel, "R", app_data_dir)
     n_closed = int(np.sum(d_e >= CLOSURE_THRESHOLD))
-    n_reach = reachable_count(env, d_e, CLOSURE_THRESHOLD, LAM)
+    n_reach = _cached_reachable_count(sel, "R", CLOSURE_THRESHOLD, LAM, app_data_dir)
     network = env.road_network
     cell_size_m = float(env.grid.cell_size_m)
     st.write(
@@ -197,7 +313,8 @@ def _page_susceptibility(app_data_dir: str) -> None:
     x = np.arange(len(scenarios))
     width = 0.35
     index_vals = [
-        by_key.get((s, "index"), {}).get("mean_auc_030", float("nan")) for s in scenarios
+        by_key.get((s, "index"), {}).get("mean_auc_030", float("nan"))
+        for s in scenarios
     ]
     elev_vals = [
         by_key.get((s, "elevation_only"), {}).get("mean_auc_030", float("nan"))
@@ -214,10 +331,24 @@ def _page_susceptibility(app_data_dir: str) -> None:
     ax.legend()
     for i, v in enumerate(index_vals):
         if np.isfinite(v):
-            ax.text(i - width / 2, v, "%.3f" % v, ha="center", va="bottom", fontsize=8)
+            ax.text(
+                i - width / 2,
+                v,
+                "%.3f" % v,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
     for i, v in enumerate(elev_vals):
         if np.isfinite(v):
-            ax.text(i + width / 2, v, "%.3f" % v, ha="center", va="bottom", fontsize=8)
+            ax.text(
+                i + width / 2,
+                v,
+                "%.3f" % v,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
     st.pyplot(fig)
 
     # Feature ablations table: remaining methods not in headline set
@@ -263,6 +394,171 @@ def _page_susceptibility(app_data_dir: str) -> None:
     )
 
 
+def _page_flood_scenarios(app_data_dir: str) -> None:
+    st.header("Flood scenarios")
+    manifest = _cached_manifest(app_data_dir)
+    indices = sorted(manifest.keys())
+    sel = st.selectbox(
+        "Seed index",
+        indices,
+        key="flood_seed",
+        format_func=lambda i: "index %d  ->  seed %d" % (i, manifest[i]),
+    )
+    scenario = st.selectbox(
+        "Scenario", list(SCENARIO_NAMES), key="flood_scenario"
+    )
+    env, _cfg = _cached_build_env(sel)
+    hpeak = _cached_hpeak(sel, scenario, app_data_dir)
+    d_e = _cached_d_e(sel, scenario, app_data_dir)
+    stats = depth_stats(env, hpeak, d_e)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    _base_map(ax, env, draw_roads=False)
+    # Draw hpeak over land with sampled Blues colormap, masked where depth < 0.01 m
+    land_mask = ~(env.is_ocean | env.is_lake)
+    peak_land = np.ma.masked_where(
+        ~land_mask | (hpeak < 0.01), hpeak
+    )
+    blues_colors = plt.get_cmap("Blues")(np.linspace(0.25, 1.0, 256))
+    blues_cmap = mcolors.LinearSegmentedColormap.from_list("blues_sampled", blues_colors)
+    im = ax.imshow(
+        peak_land, origin="upper", cmap=blues_cmap,
+        interpolation="nearest", vmin=0.01, vmax=1.0
+    )
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, extend="max")
+    cbar.set_label("peak depth (m), colour saturates at 1.0 m")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title("Peak depth H_peak, scenario %s" % scenario)
+    st.pyplot(fig)
+    st.caption(
+        "Peak depth is each cell's maximum over the run, not one moment in "
+        "time. Colours saturate at 1.0 m; the maximum is in the table "
+        "below. Isolated deep cells, including on high ground, appear to be "
+        "local terrain depressions that collect water in the simulation."
+    )
+
+    # Markdown table from depth_stats
+    md_lines = ["| stat | value |", "|---|---|"]
+    stat_rows = [
+        ("max_peak_m", "max peak, land cells (m)", "%.4f"),
+        ("max_peak_lake_m", "max peak, lake cells (m)", "%.4f"),
+        ("share_land_ge_010", "share land >= 0.10", "%.4f"),
+        ("share_land_ge_030", "share land >= 0.30", "%.4f"),
+        ("share_land_ge_045", "share land >= 0.45", "%.4f"),
+        ("closed_020", "closed edges at 0.20", "%d"),
+        ("closed_030", "closed edges at 0.30", "%d"),
+        ("closed_045", "closed edges at 0.45", "%d"),
+    ]
+    for key, label, fmt in stat_rows:
+        md_lines.append("| %s | %s |" % (label, fmt % stats[key]))
+    st.write("\n".join(md_lines))
+
+
+def _page_routing_explorer(app_data_dir: str) -> None:
+    st.header("Routing explorer")
+    manifest = _cached_manifest(app_data_dir)
+    indices = sorted(manifest.keys())
+    sel = st.selectbox(
+        "Seed index",
+        indices,
+        key="route_seed",
+        format_func=lambda i: "index %d  ->  seed %d" % (i, manifest[i]),
+    )
+    scenario = st.selectbox(
+        "Scenario", list(SCENARIO_NAMES), key="route_scenario"
+    )
+    threshold = st.radio(
+        "Closure threshold", THRESHOLD_OPTIONS, key="route_threshold",
+        format_func=lambda t: "%.2f" % t, horizontal=True
+    )
+    lam = st.radio(
+        "Lambda", LAMBDA_OPTIONS, key="route_lambda", horizontal=True
+    )
+    pair_index = st.selectbox(
+        "Pair index", list(range(20)), key="route_pair"
+    )
+
+    env, _cfg = _cached_build_env(sel)
+    d_e = _cached_d_e(sel, scenario, app_data_dir)
+    routes = _cached_compute_routes(
+        sel, scenario, threshold, lam, pair_index, app_data_dir
+    )
+    n_reach = _cached_reachable_count(
+        sel, scenario, threshold, lam, app_data_dir
+    )
+
+    st.write("Reachable pairs: %d/20" % n_reach)
+
+    # Draw map with routes
+    fig, ax = plt.subplots(figsize=(6, 6))
+    _base_map(ax, env, draw_roads=True)
+    network = env.road_network
+
+    # Closed edges in red
+    _draw_closed_edges(ax, network, routes["closed_edge_ids"])
+
+    # P0 route first (thick), policy route on top (thinner) so overlap shows both
+    _draw_route(ax, network, routes["p0_edges"], "#2ca02c", linewidth=5.0)
+    _draw_route(ax, network, routes["policy_edges"], "#ff7f0e", linewidth=2.0)
+
+    # Origin and destination markers
+    u, v = routes["od"]
+    rows = network.node_rows.astype(np.int64)
+    cols = network.node_cols.astype(np.int64)
+    ax.scatter([cols[u]], [rows[u]], color="green", s=60, zorder=6, marker="o")
+    ax.scatter([cols[v]], [rows[v]], color="red", s=60, zorder=6, marker="X")
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(
+        "Routes, scenario %s, threshold %.2f, lambda %.1f"
+        % (scenario, threshold, lam)
+    )
+
+    handles = [
+        mpatches.Patch(color="#1f77b4", label="ocean"),
+        mpatches.Patch(color="#008080", label="lake"),
+        mlines.Line2D([0], [0], color="black", lw=1.0, label="road"),
+        mlines.Line2D([0], [0], color="red", lw=1.5, label="closed edges"),
+        mlines.Line2D([0], [0], color="#2ca02c", lw=2.5, label="P0 route"),
+        mlines.Line2D([0], [0], color="#ff7f0e", lw=2.5, label="policy route"),
+    ]
+    ax.legend(handles=handles, loc="lower right", fontsize=8)
+    st.pyplot(fig)
+
+    # Route summary table
+    p0_sum = route_summary(env, d_e, routes["p0_edges"])
+    pol_sum = route_summary(env, d_e, routes["policy_edges"])
+    md_lines = [
+        "| route | length_m | free_flow_time_s | mean_d_e | max_d_e | n_edges |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name, summ in (("P0", p0_sum), ("policy", pol_sum)):
+        if summ is None:
+            md_lines.append(
+                "| %s | not reachable under this closure set | | | | |" % name
+            )
+        else:
+            md_lines.append(
+                "| %s | %.2f | %.2f | %.4f | %.4f | %d |"
+                % (
+                    name,
+                    summ["length_m"],
+                    summ["free_flow_time_s"],
+                    summ["mean_d_e"],
+                    summ["max_d_e"],
+                    summ["n_edges"],
+                )
+            )
+    st.write("\n".join(md_lines))
+
+    st.caption(
+        "Reachability depends only on the closure threshold; lambda changes "
+        "route choice among reachable pairs."
+    )
+
+
 def _page_coming(title: str) -> None:
     st.header(title)
     st.write("Coming in the next stage.")
@@ -272,16 +568,16 @@ def main() -> None:
     _set_page_config()
     _banner()
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", PAGES)
+    page = st.sidebar.radio("Go to", PAGES, key="nav_radio")
     app_data_dir = str(APP_DATA_DIR)
     if page == "Overview":
         _page_overview(app_data_dir)
     elif page == "Susceptibility (Experiment A)":
         _page_susceptibility(app_data_dir)
     elif page == "Flood scenarios":
-        _page_coming("Flood scenarios")
+        _page_flood_scenarios(app_data_dir)
     elif page == "Routing explorer":
-        _page_coming("Routing explorer")
+        _page_routing_explorer(app_data_dir)
     elif page == "Method and limitations":
         _page_coming("Method and limitations")
     else:

@@ -19,10 +19,12 @@ from urbanflood.app_core import (
     build_env,
     compute_routes,
     count_pairs,
+    depth_stats,
     load_experiment_a_rows,
     load_hpeak,
     load_manifest,
     reachable_count,
+    route_summary,
     summarize_experiment_a,
 )
 from urbanflood.config import build_default_config
@@ -103,6 +105,56 @@ def test_reachable_count_030_lam0(env_cfg):
     d_e = build_d_e(env, arr)
     n = reachable_count(env, d_e, 0.30, 0.0)
     assert n == 13
+
+
+# ---------------------------------------------------------------------------
+# depth_stats
+# ---------------------------------------------------------------------------
+
+
+def test_depth_stats_seed0_scenario_r(env_cfg):
+    env, cfg = env_cfg
+    arr = load_hpeak(SEED_INDEX, SCENARIO)
+    d_e = build_d_e(env, arr)
+    stats = depth_stats(env, arr, d_e)
+    land_mask = ~(env.is_ocean | env.is_lake)
+    lake_mask = env.is_lake
+    land_max = float(np.max(arr[land_mask]))
+    lake_max = float(np.max(arr[lake_mask]))
+    assert stats["closed_030"] == 361
+    assert 0.0 <= stats["share_land_ge_010"] <= 1.0
+    assert 0.0 <= stats["share_land_ge_030"] <= 1.0
+    assert 0.0 <= stats["share_land_ge_045"] <= 1.0
+    assert stats["share_land_ge_010"] >= stats["share_land_ge_030"]
+    assert stats["share_land_ge_030"] >= stats["share_land_ge_045"]
+    assert stats["max_peak_m"] == land_max
+    assert stats["max_peak_lake_m"] == lake_max
+
+
+# ---------------------------------------------------------------------------
+# route_summary
+# ---------------------------------------------------------------------------
+
+
+def test_route_summary_none_returns_none(env_cfg):
+    env, cfg = env_cfg
+    arr = load_hpeak(SEED_INDEX, SCENARIO)
+    d_e = build_d_e(env, arr)
+    assert route_summary(env, d_e, None) is None
+
+
+def test_route_summary_reachable_p0_pair0(env_cfg):
+    env, cfg = env_cfg
+    arr = load_hpeak(SEED_INDEX, SCENARIO)
+    d_e = build_d_e(env, arr)
+    res = compute_routes(env, d_e, 0.30, 0.0, 0)
+    assert res["p0_reachable"] is True
+    summ = route_summary(env, d_e, res["p0_edges"])
+    assert summ is not None
+    assert summ["n_edges"] > 0
+    assert summ["length_m"] > 0
+    assert summ["free_flow_time_s"] > 0
+    assert 0.0 <= summ["mean_d_e"] <= summ["max_d_e"]
 
 
 # ---------------------------------------------------------------------------
