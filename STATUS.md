@@ -677,11 +677,12 @@ Specification: Architecture V7 (approved); Phase 4 additions adopted
 - Reporting language: "lower simulated flood exposure" and "lower modelled
   risk"; never "safe". Synthetic recovery testing only; no real-world or
   Mumbai claim.
-Tests collected at Stage 17: 379 (pytest --collect-only); full suite not
-re-run since Experiment C.
-Full quick suite at Phase 6 (six-hour test deselected): 408 passed and
-1 failed in 348.65 s before the guard test was fixed in Stage 22;
-result of the rerun: not recorded.
+Full quick suite at Phase 6 (six-hour test deselected): 409 passed in
+350.74 s after the guard test fix in Stage 22 (an earlier run had 408
+passed and 1 failed in 348.65 s). The six-hour test was not re-run in
+Phase 6; its last measured result is a pass in 358 s with the Option A
+initial state (TC10 D_max 0.011246 m, RMSE 0.001120 m, D_storage
+0.000533).
 
 ### Commit state
 
@@ -714,9 +715,9 @@ Phase 4.
 
 ### Commit state
 
-Phase 5 application built; final review pending.
+Phase 5 application built; documentation finalised.
 
-## Phase 6: Closeout - IN PROGRESS
+## Phase 6: Closeout - COMPLETE
 
 - Guard-test fix (Stage 22): replaced the stale
   test_initial_state_no_susceptibility_module_yet assertion (which failed
@@ -724,6 +725,12 @@ Phase 5 application built; final review pending.
   test_simulator_layers_do_not_import_susceptibility, an AST check that
   initial_state.py, simulator.py, orchestrator.py, numerics.py and
   drainage.py do not import urbanflood.susceptibility.
-- Pending: README how-to-run section, final push.
+- README how-to-run and results sections added.
+- Doc wording scan complete.
+- Final push complete.
+
+### Commit state
+
+Phase 6 complete; documentation finalised.
 
 ## Phase 0: Scaffold and configuration - COMPLETE

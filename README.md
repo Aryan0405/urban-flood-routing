@@ -89,8 +89,8 @@ testing only; no external validity is claimed anywhere).
 | 2 | Flood simulator and dt sensitivity | complete |
 | 3 | Susceptibility index and Experiment A | complete |
 | 4 | Routing and Experiment C | complete |
-| 5 | Streamlit application (5 sections) | app built, final review pending |
-| 6 | Closeout and documentation | pending |
+| 5 | Streamlit application (5 sections) | complete |
+| 6 | Closeout and documentation | complete |
 
 See STATUS.md for the current phase log with actual test results.
 
@@ -163,6 +163,55 @@ python -m pytest -v
 ```
 
 No installation step is needed; `conftest.py` puts `src/` on the import path.
+
+## How to run the app
+
+The Streamlit app targets Python 3.11.9. Create and activate a virtual
+environment, install the requirements, then run the app from the repository
+root:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+
+The app is offline: it needs no network connection and no API keys. It reads
+only the committed `app_data/` text files, `docs/experiment_a/results.csv`,
+and the environment rebuilt from seeds. App tests run with:
+
+```powershell
+python -m pytest tests/test_app_core.py tests/test_app_smoke.py -q
+```
+
+Note: pandas is blocked by an application policy on the development machine,
+so the app uses matplotlib and markdown tables and does not import pandas.
+
+## Results summary (synthetic)
+
+Experiment A mean AUC at 0.30 m, index versus elevation-only: R 0.722/0.669,
+S1 0.741/0.701, S2 0.820/0.782, S3 0.725/0.673. Index higher in 20 of 20
+seed-scenario pairs; elevation-only has the higher top-decile lift in many
+cells; weights were declared before the experiment and not re-fitted.
+
+Experiment C (closure 0.30, lambda 0, pooled over 100 pairs): reachable
+fraction R 0.50, S1 0.26, S2 0.48, S3 0.50; per-seed ranges R 0.25 to 0.65,
+S1 0.05 to 0.55, S2 0.25 to 0.60, S3 0.25 to 0.65; detour mean over pairs
+where both routes exist: R 1.5251, S1 1.4788, S2 1.5195, S3 1.5344. See
+docs/experiment_a/ and docs/experiment_c/ for details.
+
+## Limitations
+
+- Reachable fraction measures network connectivity under closure, not routing quality; about 54 percent of unreachable pairs are splits into non-trivial components.
+- Detour and exposure are means over pairs where both routes exist.
+- P0 ignores depth, so exposure reduction against P0 is largely by construction and the lambda effect is small.
+- Roads are not terrain-aware; the deepest road edges appear to sit in terrain pits.
+- Peak depth maps show each cell's maximum over the run.
+- Lake cells can reach several metres in the simulation; this was not investigated.
+- No calibration against real data.
+- pandas is blocked by an application policy on the development machine, so the app uses matplotlib and markdown tables.
+- This is not a forecasting or emergency tool.
 
 ## Honest limitations (full record in later phase documentation)
 

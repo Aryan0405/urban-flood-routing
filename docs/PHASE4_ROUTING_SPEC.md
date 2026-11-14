@@ -323,8 +323,7 @@ Interpretation limits:
   construction; the informative comparison is the lambda effect, which is
   small here.
 - the shared maximum d_e appears to come from road nodes in terrain pits; roads are
-  not terrain-aware, so this appears to be an artifact of the synthetic road
-  layout. The road generator rule was not checked.
+  not terrain-aware, so this may reflect the synthetic road layout. The road generator rule was not checked.
 - synthetic recovery testing only; no real-world or Mumbai claim.
 
 Reporting language: "lower simulated flood exposure" and "lower modelled
