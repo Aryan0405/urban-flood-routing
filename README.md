@@ -88,7 +88,7 @@ testing only; no external validity is claimed anywhere).
 | 1 | Environment generation (terrain, land cover, drainage, weather, roads) | complete |
 | 2 | Flood simulator and dt sensitivity | complete |
 | 3 | Susceptibility index and Experiment A | complete |
-| 4 | Routing and Experiment C | pending |
+| 4 | Routing and Experiment C | complete |
 | 5 | Streamlit application (5 sections) | pending |
 | 6 | Closeout and documentation | pending |
 

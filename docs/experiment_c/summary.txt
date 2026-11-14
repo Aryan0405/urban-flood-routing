@@ -1,0 +1,106 @@
+Experiment C summary
+
+Aggregated results (pooled over all seed x OD-pair rows):
+
+  Scenario R:
+    Threshold 0.2:
+      lambda=0.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6777, mean_exposure_reduction=0.0891, frac_lower_exposure=0.9111
+      lambda=0.5: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6781, mean_exposure_reduction=0.0893, frac_lower_exposure=0.9111
+      lambda=1.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6781, mean_exposure_reduction=0.0893, frac_lower_exposure=0.9111
+      lambda=2.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6795, mean_exposure_reduction=0.0894, frac_lower_exposure=0.9111
+      lambda=5.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6799, mean_exposure_reduction=0.0894, frac_lower_exposure=0.9333
+      lambda=10.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6836, mean_exposure_reduction=0.0895, frac_lower_exposure=0.9333
+    Threshold 0.3:
+      lambda=0.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5251, mean_exposure_reduction=0.0832, frac_lower_exposure=0.9000
+      lambda=0.5: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5251, mean_exposure_reduction=0.0836, frac_lower_exposure=0.9000
+      lambda=1.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5276, mean_exposure_reduction=0.0844, frac_lower_exposure=0.9200
+      lambda=2.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5281, mean_exposure_reduction=0.0845, frac_lower_exposure=0.9200
+      lambda=5.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5486, mean_exposure_reduction=0.0858, frac_lower_exposure=0.9400
+      lambda=10.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5685, mean_exposure_reduction=0.0869, frac_lower_exposure=0.9400
+    Threshold 0.45:
+      lambda=0.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4414, mean_exposure_reduction=0.0911, frac_lower_exposure=0.8966
+      lambda=0.5: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4431, mean_exposure_reduction=0.0934, frac_lower_exposure=0.8966
+      lambda=1.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4457, mean_exposure_reduction=0.0942, frac_lower_exposure=0.9138
+      lambda=2.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4492, mean_exposure_reduction=0.0946, frac_lower_exposure=0.9138
+      lambda=5.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4642, mean_exposure_reduction=0.0957, frac_lower_exposure=0.9138
+      lambda=10.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.5062, mean_exposure_reduction=0.0983, frac_lower_exposure=0.9310
+  Scenario S1:
+    Threshold 0.2:
+      lambda=0.0: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4868, mean_exposure_reduction=0.1596, frac_lower_exposure=0.8571
+      lambda=0.5: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4868, mean_exposure_reduction=0.1597, frac_lower_exposure=0.8571
+      lambda=1.0: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4868, mean_exposure_reduction=0.1597, frac_lower_exposure=0.8571
+      lambda=2.0: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4890, mean_exposure_reduction=0.1600, frac_lower_exposure=0.9048
+      lambda=5.0: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4914, mean_exposure_reduction=0.1600, frac_lower_exposure=0.9048
+      lambda=10.0: reachable_fraction=0.2100, p0_blocked_fraction=0.9700, mean_detour_ratio=1.5253, mean_exposure_reduction=0.1607, frac_lower_exposure=0.9048
+    Threshold 0.3:
+      lambda=0.0: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4788, mean_exposure_reduction=0.1582, frac_lower_exposure=0.8846
+      lambda=0.5: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4799, mean_exposure_reduction=0.1600, frac_lower_exposure=0.8846
+      lambda=1.0: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4799, mean_exposure_reduction=0.1600, frac_lower_exposure=0.8846
+      lambda=2.0: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4799, mean_exposure_reduction=0.1600, frac_lower_exposure=0.8846
+      lambda=5.0: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.4838, mean_exposure_reduction=0.1603, frac_lower_exposure=0.9231
+      lambda=10.0: reachable_fraction=0.2600, p0_blocked_fraction=0.9700, mean_detour_ratio=1.5520, mean_exposure_reduction=0.1624, frac_lower_exposure=0.9231
+    Threshold 0.45:
+      lambda=0.0: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.7545, mean_exposure_reduction=0.1435, frac_lower_exposure=0.9070
+      lambda=0.5: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.7546, mean_exposure_reduction=0.1440, frac_lower_exposure=0.9070
+      lambda=1.0: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.7575, mean_exposure_reduction=0.1452, frac_lower_exposure=0.9070
+      lambda=2.0: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.7575, mean_exposure_reduction=0.1452, frac_lower_exposure=0.9070
+      lambda=5.0: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.7809, mean_exposure_reduction=0.1478, frac_lower_exposure=0.9302
+      lambda=10.0: reachable_fraction=0.4300, p0_blocked_fraction=0.9600, mean_detour_ratio=1.8093, mean_exposure_reduction=0.1492, frac_lower_exposure=0.9302
+  Scenario S2:
+    Threshold 0.2:
+      lambda=0.0: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6373, mean_exposure_reduction=0.0891, frac_lower_exposure=0.9048
+      lambda=0.5: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6377, mean_exposure_reduction=0.0894, frac_lower_exposure=0.9048
+      lambda=1.0: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6377, mean_exposure_reduction=0.0894, frac_lower_exposure=0.9048
+      lambda=2.0: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6393, mean_exposure_reduction=0.0895, frac_lower_exposure=0.9048
+      lambda=5.0: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6397, mean_exposure_reduction=0.0895, frac_lower_exposure=0.9286
+      lambda=10.0: reachable_fraction=0.4200, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6424, mean_exposure_reduction=0.0896, frac_lower_exposure=0.9286
+    Threshold 0.3:
+      lambda=0.0: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5195, mean_exposure_reduction=0.0834, frac_lower_exposure=0.8958
+      lambda=0.5: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5195, mean_exposure_reduction=0.0838, frac_lower_exposure=0.8958
+      lambda=1.0: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5221, mean_exposure_reduction=0.0846, frac_lower_exposure=0.9167
+      lambda=2.0: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5226, mean_exposure_reduction=0.0847, frac_lower_exposure=0.9167
+      lambda=5.0: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5440, mean_exposure_reduction=0.0861, frac_lower_exposure=0.9375
+      lambda=10.0: reachable_fraction=0.4800, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5647, mean_exposure_reduction=0.0872, frac_lower_exposure=0.9375
+    Threshold 0.45:
+      lambda=0.0: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.3971, mean_exposure_reduction=0.0825, frac_lower_exposure=0.8889
+      lambda=0.5: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.3979, mean_exposure_reduction=0.0835, frac_lower_exposure=0.8889
+      lambda=1.0: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4007, mean_exposure_reduction=0.0843, frac_lower_exposure=0.9074
+      lambda=2.0: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4044, mean_exposure_reduction=0.0848, frac_lower_exposure=0.9074
+      lambda=5.0: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4206, mean_exposure_reduction=0.0860, frac_lower_exposure=0.9074
+      lambda=10.0: reachable_fraction=0.5400, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4632, mean_exposure_reduction=0.0885, frac_lower_exposure=0.9259
+  Scenario S3:
+    Threshold 0.2:
+      lambda=0.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6777, mean_exposure_reduction=0.0919, frac_lower_exposure=0.9111
+      lambda=0.5: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6781, mean_exposure_reduction=0.0921, frac_lower_exposure=0.9111
+      lambda=1.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6781, mean_exposure_reduction=0.0921, frac_lower_exposure=0.9111
+      lambda=2.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6795, mean_exposure_reduction=0.0922, frac_lower_exposure=0.9111
+      lambda=5.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6816, mean_exposure_reduction=0.0923, frac_lower_exposure=0.9333
+      lambda=10.0: reachable_fraction=0.4500, p0_blocked_fraction=0.9600, mean_detour_ratio=1.6836, mean_exposure_reduction=0.0923, frac_lower_exposure=0.9333
+    Threshold 0.3:
+      lambda=0.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5344, mean_exposure_reduction=0.0862, frac_lower_exposure=0.9000
+      lambda=0.5: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5344, mean_exposure_reduction=0.0867, frac_lower_exposure=0.9000
+      lambda=1.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5364, mean_exposure_reduction=0.0874, frac_lower_exposure=0.9200
+      lambda=2.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5370, mean_exposure_reduction=0.0874, frac_lower_exposure=0.9200
+      lambda=5.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5576, mean_exposure_reduction=0.0890, frac_lower_exposure=0.9400
+      lambda=10.0: reachable_fraction=0.5000, p0_blocked_fraction=0.9500, mean_detour_ratio=1.5732, mean_exposure_reduction=0.0897, frac_lower_exposure=0.9400
+    Threshold 0.45:
+      lambda=0.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4414, mean_exposure_reduction=0.0936, frac_lower_exposure=0.8966
+      lambda=0.5: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4431, mean_exposure_reduction=0.0959, frac_lower_exposure=0.8966
+      lambda=1.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4457, mean_exposure_reduction=0.0967, frac_lower_exposure=0.9138
+      lambda=2.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4492, mean_exposure_reduction=0.0971, frac_lower_exposure=0.9138
+      lambda=5.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.4656, mean_exposure_reduction=0.0985, frac_lower_exposure=0.9138
+      lambda=10.0: reachable_fraction=0.5800, p0_blocked_fraction=0.9400, mean_detour_ratio=1.5072, mean_exposure_reduction=0.1010, frac_lower_exposure=0.9310
+
+  Headline (threshold 0.30):
+    Scenario R:
+      lambda=0.0: reachable_fraction=0.5000, mean_detour_ratio=1.5251
+      lambda=1.0: reachable_fraction=0.5000, mean_detour_ratio=1.5276
+    Scenario S1:
+      lambda=0.0: reachable_fraction=0.2600, mean_detour_ratio=1.4788
+      lambda=1.0: reachable_fraction=0.2600, mean_detour_ratio=1.4799
+    Scenario S2:
+      lambda=0.0: reachable_fraction=0.4800, mean_detour_ratio=1.5195
+      lambda=1.0: reachable_fraction=0.4800, mean_detour_ratio=1.5221
+    Scenario S3:
+      lambda=0.0: reachable_fraction=0.5000, mean_detour_ratio=1.5344
+      lambda=1.0: reachable_fraction=0.5000, mean_detour_ratio=1.5364

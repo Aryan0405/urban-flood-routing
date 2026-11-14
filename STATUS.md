@@ -637,7 +637,11 @@ S3 lift_030 was previously misreported; elevation-only has higher top-decile
 lift at 0.30 m in S1, S2, and marginally S3 (3.362287 vs 3.352162), while the
 index is higher at 0.30 m only in R (3.341657 vs 3.288309).
 
-## Phase 4: Routing and Experiment C - IN PROGRESS
+## Phase 4: Routing and Experiment C - COMPLETE
+
+Date: 2026-11-14
+Specification: Architecture V7 (approved); Phase 4 additions adopted
+(author-delegated, Stage 14); docs/PHASE4_ROUTING_SPEC.md section 14.
 
 - `src/urbanflood/routing.py`: effective_edge_depth, sample_od_pairs,
   policy_costs, solve_routes, route_metrics; pure functions importing only
@@ -656,6 +660,30 @@ index is higher at 0.30 m only in R (3.341657 vs 3.288309).
   Experiment C using cached Experiment A H_peak arrays; writes pairs.csv,
   edge_summary.csv, summary.csv, summary.txt, run_meta_c.txt; includes
   cache guard (refuses --out inside repo and mismatched steps/dt).
-- Experiment C full run: not yet executed (pending).
+- Experiment C full run: executed (5 seeds x 4 scenarios x closure
+  thresholds 0.20/0.30/0.45 x lambda 0/0.5/1/2/5/10, 20 OD pairs per seed);
+  results in docs/experiment_c/.
+- Headline (closure 0.30, lambda 0), pooled over 100 pairs: reachable fraction
+  R 0.50 (per-seed 0.25 to 0.65), S1 0.26 (0.05 to 0.55), S2 0.48 (0.25 to
+  0.60), S3 0.50 (0.25 to 0.65); mean detour ratio over pairs where both
+  routes exist R 1.5251 (n=50), S1 1.4788 (n=26), S2 1.5195 (n=48), S3
+  1.5344 (n=50).
+- Lambda effect, closure 0.30, scenario R: mean exposure reduction vs P0
+  0.0832 m (lambda 0) to 0.0869 m (lambda 10); mean detour 1.5251 to 1.5685;
+  fraction of pairs with lower exposure 0.90 to 0.94; reachable fraction
+  unchanged with lambda (the closure set fixes connectivity).
+- Zero-depth control: 20 of 20 pairs reachable under both P0 and the closure
+  policy, cost ratio exactly 1.0, every seed and scenario.
+- Reporting language: "lower simulated flood exposure" and "lower modelled
+  risk"; never "safe". Synthetic recovery testing only; no real-world or
+  Mumbai claim.
+Tests collected at Stage 17: 379 (pytest --collect-only); full suite not
+re-run since Experiment C.
+
+### Commit state
+
+Phase 4 is complete and documented (docs/experiment_c/ plus docs/
+PHASE4_ROUTING_SPEC.md section 14); no code changes remain pending for
+Phase 4.
 
 ## Phase 0: Scaffold and configuration - COMPLETE
