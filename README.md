@@ -86,7 +86,7 @@ testing only; no external validity is claimed anywhere).
 |---|---|---|
 | 0 | Scaffold and configuration | complete |
 | 1 | Environment generation (terrain, land cover, drainage, weather, roads) | complete (pending commit approval) |
-| 2 | Flood simulator and dt sensitivity | pending |
+| 2 | Flood simulator and dt sensitivity | complete |
 | 3 | Susceptibility index and Experiment A | pending |
 | 4 | Routing and Experiment C | pending |
 | 5 | Streamlit application (5 sections) | pending |
@@ -173,3 +173,17 @@ demonstrates nothing about real Mumbai. The exchange coefficient c is an
 empirical choice, not a calibrated parameter; drainage acts as an unbounded
 sink with no sewer surcharge feedback, so drain-backup flooding, a dominant
 mechanism in real Mumbai events, is structurally underrepresented.
+
+## Known limitations (Phase 2)
+
+- Drainage is terrain-blind and applies to inland lake cells (the spec has no
+  lake exemption). Measured on environment seed 2027, Scenario R: with Option
+  A initial depths, lakes lose about 2429 m3 (1.2 percent of initial lake
+  volume) over the 120 pre-rain steps, entirely due to drainage. Disabling
+  drainage on lake cells changed no land flood peak (max land H_peak 2.7505 m
+  in both runs) and left the count of road nodes with peak depth above 0.30 m
+  unchanged (252 in both). Documented as a modelling limitation, not tuned.
+- Only Scenario R has been simulated end to end so far; S1, S2, S3 are
+  configured and unit-tested but not yet run through run_simulation.
+- The flood simulator is a simplified water-balance model; all existing
+  README limitation text stays.

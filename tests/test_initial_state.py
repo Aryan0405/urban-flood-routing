@@ -6,7 +6,9 @@ pattern from tests/test_environment.py (build_default_config + build_environment
 
 from __future__ import annotations
 
+import ast
 import glob
+import importlib
 import inspect
 
 import numpy as np
@@ -191,14 +193,30 @@ def test_initial_state_short_run_integration():
 # Test g: layer separation structural check
 # ---------------------------------------------------------------------------
 
+def _imported_module_names(module_name: str) -> list[str]:
+    """Return all module names imported by a module (ast.Import and ast.ImportFrom)."""
+    module = importlib.import_module(module_name)
+    source = inspect.getsource(module)
+    tree = ast.parse(source)
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                names.append(node.module)
+    return names
+
+
 def test_initial_state_layer_separation_no_drainage_import():
-    module_source = inspect.getsource(__import__("urbanflood.initial_state"))
-    import_lines = [
-        line for line in module_source.splitlines()
-        if line.strip().startswith("import ") or line.strip().startswith("from ")
-    ]
-    for line in import_lines:
-        assert "drainage" not in line, f"initial_state.py imports drainage: {line}"
+    names = _imported_module_names("urbanflood.initial_state")
+    assert not any(n == "urbanflood.drainage" or n.startswith("urbanflood.drainage.") for n in names), (
+        f"initial_state.py imports drainage: {names}"
+    )
+    assert not any("suscept" in n for n in names), (
+        f"initial_state.py imports susceptibility: {names}"
+    )
 
 
 def test_initial_state_no_susceptibility_module_yet():

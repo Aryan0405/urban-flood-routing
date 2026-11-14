@@ -225,8 +225,20 @@ and 3+4+6 vertical; impervious probability base 0.30, road term 0.30
   probability near bridges uses road-node proximity, so abutment cells are
   near-road but bridge water cells are not classified impervious.
 - Ocean cells are the only storage exclusion (boundary reservoir); lake
-  initial volume belongs to the ledger baseline (Option A), enforced by the
-  recorded spill levels consumed in Phase 2.
+  initial volume belongs to the ledger baseline (Option A). Recorded spill
+  levels are consumed (a) by roads.py for bridge deck elevation and (b) by
+  src/urbanflood/initial_state.py build_initial_depth() for Option A initial
+  depth (added in Stage 10b).
+
+### Correction note: Option A initialisation
+
+Option A lake initialisation (h_init = max(0, spill_level - bed)) was documented
+in Phase 1 (environment.py and config.py docstrings) and listed as a Phase 2
+acceptance item, but no builder existed until Stage 10b. The builder
+src/urbanflood/initial_state.py build_initial_depth() was added afterwards,
+and all end-to-end tests (six-hour test, TC12, node-depths, edge-depths,
+stage15_diagnostic) were switched from np.zeros initial depth to
+build_initial_depth(env).
 
 ### Phase 2: Flood simulator - COMPLETE (single-timestep boundary)
 
@@ -329,10 +341,44 @@ Historical results (kept separate, from Stages 5-8):
 - Simulation-level TC14 H_peak permutation invariance: 1 passed, 43 deselected
   (Stage 8)
 
-Remaining Phase 2 multi-timestep items: edge-depth samples and output
-container/dtype decisions are deferred to the next milestone. H_peak cell-level
-peak output already exists in SimulationResult; peak node/peak edge depths
-remain optional and undecided.
+### Stage 10: Edge-depth outputs (final) - IMPLEMENTED
+
+- edge_depths(result, env) in src/urbanflood/orchestrator.py returns final
+  water-depth samples at three positions along each road-network edge, shape
+  (n_edges, 3), metres, start/mid/end rule from docs/PHASE2_NUMERICAL_SPEC.md
+  section 14. 12 tests in tests/test_peak_outputs.py (shared with peak tests).
+
+### Stage 10b: Option A initial-depth builder - IMPLEMENTED
+
+- src/urbanflood/initial_state.py build_initial_depth(env) returns a fresh
+  float64 array of shape (n_rows, n_cols): max(0, spill_level[lake_id] -
+  elevation_m) on is_lake cells, 0.0 elsewhere. Vectorized, no mutation of env,
+  environment digest unchanged.
+- Tests: tests/test_initial_state.py, 8 tests (shape/dtype/finite, lake
+  formula exact, at least one positive lake cell, fresh array, determinism,
+  short-run integration, layer separation).
+- Verified numbers (master seed 2027): lake volume at t=0 is 202175.996 m3
+  across 31 lake cells; lake 0 max initial depth 5.127741 m, lake 1 max
+  initial depth 8.499748 m.
+
+### Stage 11: Peak node and peak edge depths - IMPLEMENTED
+
+- peak_node_depths(result, env): shape (n_nodes,), metres, sampled from
+  result.H_peak at canonical node cells. Peak = running maximum of cell depth
+  over the whole simulation including initial depth.
+- peak_edge_depths(result, env): shape (n_edges, 3), metres, sampled from
+  result.H_peak at start/mid/end using the same piecewise-linear interpolation
+  rule as edge_depths. SAMPLED peak (start/mid/end interpolated from cell
+  peaks), not the maximum over every path cell.
+- Both return fresh copies, dtype follows source, validate grid shape.
+- 12 tests in tests/test_peak_outputs.py.
+- This is a design addition; the definition of effective edge depth d_e is NOT
+  yet defined in RoadConfig and remains a Phase 4 specification item
+  (proposed: d_e = max of the three peak samples, not yet approved).
+
+Remaining Phase 2 multi-timestep items: output container/dtype decisions are
+deferred to the next milestone (spec section 17). film_threshold_depth_m
+remains unused in Phase 2.
 
 ## Phase 0: Scaffold and configuration - COMPLETE
 
@@ -464,3 +510,44 @@ changed; no history rewrite; branch is main tracking origin/main.
   (6) ocean cells remain the only exclusion (boundary reservoir).
   Documentation consolidated in config.py; implementation belongs to
   Phase 2 and no simulator code exists yet.
+
+### Verified results (Stage 10b and Stage 11)
+
+- Six-hour test (Scenario R, seed 2027, Option A initial state): passed in
+  358.56 s on the development machine.
+- TC10 (six-hour, Option A initial state): D_max 0.011246 m (limit 0.05 m),
+  RMSE 0.001120 m (limit 0.01 m), D_storage 0.000533 (limit 0.01). 7.5 s
+  fallback not triggered. S30 = 1389307.274347 m3, S15 =
+  1388566.239373 m3.
+- Quick suite with six-hour test deselected: 271 passed (before Stage 11
+  tests were added).
+- Total collected tests: 286 (from pytest --collect-only). Pass/fail counts
+  for the post-Stage-11 full suite are not recorded.
+
+### Decisions recorded
+
+1. Drainage applies to lake cells: the spec has no lake exemption, and
+   drainage is computed for every non-ocean cell including inland lakes.
+   Measured impact: on environment seed 2027, Scenario R, lakes lose about
+   2429 m3 (1.2 percent of initial lake volume) over 120 pre-rain steps,
+   entirely due to drainage. Disabling drainage on lake cells changed no land
+   flood peak (max land H_peak 2.7505 m in both runs) and left the count of
+   road nodes with peak depth above 0.30 m unchanged (252 in both). Documented
+   as a modelling limitation, not tuned. See README.md Known limitations.
+2. Layer boundary: the susceptibility layer (Phase 3) must not import or read
+   drainage, outfalls, simulated depths, the simulator, the orchestrator,
+   initial_state, or lake spill levels / lake_specs. It may use elevation_m,
+   is_ocean, is_lake, land_cover, road_cells only.
+3. Routing consumes PEAK edge depths (peak_edge_depths). The definition of
+   effective edge depth d_e is NOT yet defined in RoadConfig and is a Phase 4
+   specification item. Proposed: d_e = max of the three peak samples (not yet
+   approved).
+
+### Open items
+
+- Stage 16B / Phase 3 specification still pending.
+- S1/S2/S3 never simulated through run_simulation (configured and unit-tested
+  only).
+- film_threshold_depth_m (0.005 m) unused in Phase 2; no role established.
+- Bridge-deck inundation not modelled; edge-depth samples on bridge/lake cells
+  represent underlying lake terrain cell depth, not deck depth.

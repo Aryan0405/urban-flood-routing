@@ -169,6 +169,9 @@ Dimensional check: `(mm/h / (1000*3600)) = m/s`; `(m/s) * m^2 * s = m^3`. Correc
 
 - Blocked drainage (`b_i = True`) removes zero water.
 - Unblocked drainage is limited by available surface-water volume.
+- Drainage applies to every non-ocean cell, including inland lake cells; the
+  spec has no lake exemption. See README.md Known limitations for measured
+  impact.
 
 Every outgoing request is a directed transfer with exactly one donor cell.
 Internal faces are directed from donor to receiver; drainage and sea outflows
@@ -541,10 +544,13 @@ Required outputs for later phases:
   impassable based solely on their values.
 
 Node and edge required outputs are **final depths at the end of the
-simulation**. Peak node depths and peak edge depths are not part of the output
-interface. H_peak provides peak grid-cell depth; peak node depths are derivable
-as H_peak indexed by road-node cells; peak edge depths would require new
-instrumentation and are not included.
+simulation**. Peak node depths and peak edge depths were added in Stage 11
+as `peak_node_depths()` and `peak_edge_depths()`, sampled from `H_peak`
+using the same start/mid/end rule as `edge_depths()`. They are SAMPLED peaks
+(start/mid/end interpolated from cell peaks), not the maximum over every cell
+on the path. H_peak provides peak grid-cell depth; peak node depths are
+derivable as H_peak indexed by road-node cells; peak edge depths are sampled
+from H_peak along each edge path.
 
 Ownership: `SimulationResult.h_final` and `SimulationResult.H_peak` are stored
 fields of the result dataclass; callers receive a reference to the stored
@@ -598,9 +604,12 @@ authorized decisions above. They are listed here rather than silently chosen:
    simulation-level output, deferred until multi-timestep orchestration exists.
    Includes initial depth as its starting maximum. Not part of the single-timestep
    `StepResult`; must be verified by the future multi-timestep integration test.
-   Peak node and peak edge depths are not part of the output interface.
-   Peak node depths are derivable as H_peak indexed by road-node cells;
-   peak edge depths would require new instrumentation and are not included.
+   Peak node depths and peak edge depths were added in Stage 11 as sampled
+   peaks from H_peak (peak_node_depths, peak_edge_depths). They use the same
+   start/mid/end rule as edge_depths applied to H_peak. Peak node depths are
+   derivable as H_peak indexed by road-node cells; peak edge depths are
+   SAMPLED peaks (start/mid/end interpolated from cell peaks), not the maximum
+   over every path cell.
 2. **Output container and array dtypes:** Outputs are returned as NumPy arrays
    from standalone functions (`node_depths`, `edge_depths`). Array dtype follows
    `result.h_final` (float64 in the current implementation); no independent

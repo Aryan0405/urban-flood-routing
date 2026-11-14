@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import ast
+import importlib
 import inspect
 import numpy as np
 import pytest
@@ -48,6 +50,22 @@ def _run_short(dt_s: float, n_steps: int):
         h_initial, ENV, DRAINAGE, RAIN, TIDE, EXCH, RUNOFF,
         dt=dt_s, n_steps=n_steps,
     )
+
+
+def _imported_module_names(module_name: str) -> list[str]:
+    """Return all module names imported by a module (ast.Import and ast.ImportFrom)."""
+    module = importlib.import_module(module_name)
+    source = inspect.getsource(module)
+    tree = ast.parse(source)
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                names.append(node.module)
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +121,7 @@ def test_edge_depths_match_independent_recomputation():
 
 def test_peak_node_depths_shape_dtype_fresh_copy():
     result = _run_short(30.0, 25)
+    h_peak_before = result.H_peak.copy()
     depths = peak_node_depths(result, ENV)
     node_rows = ENV.road_network.node_rows.astype(np.int64)
     node_cols = ENV.road_network.node_cols.astype(np.int64)
@@ -110,10 +129,10 @@ def test_peak_node_depths_shape_dtype_fresh_copy():
     assert depths.shape == (ENV.road_network.n_nodes,)
     assert depths.dtype == result.H_peak.dtype
     assert depths.tobytes() == expected.tobytes()
-    # Fresh copy: mutation does not affect result.H_peak
-    depths_mut = depths.copy()
-    depths_mut[0] = 999.0
-    assert result.H_peak[node_rows[0], node_cols[0]] != 999.0
+    # Fresh copy: mutating the returned array in place does not affect H_peak
+    depths[0] = 999.0
+    assert np.array_equal(result.H_peak, h_peak_before)
+    assert not np.shares_memory(depths, result.H_peak)
 
 
 def test_peak_node_depths_equals_h_peak_indexing():
@@ -125,19 +144,46 @@ def test_peak_node_depths_equals_h_peak_indexing():
     np.testing.assert_array_equal(depths, expected)
 
 
+def test_node_depths_fresh_copy():
+    result = _run_short(30.0, 25)
+    node_rows = ENV.road_network.node_rows.astype(np.int64)
+    node_cols = ENV.road_network.node_cols.astype(np.int64)
+    h_final_before = result.h_final.copy()
+    depths = node_depths(result, ENV)
+    expected = result.h_final[node_rows, node_cols]
+    assert depths.shape == (ENV.road_network.n_nodes,)
+    assert depths.dtype == np.float64
+    assert depths.tobytes() == expected.tobytes()
+    depths[0] = 999.0
+    assert np.array_equal(result.h_final, h_final_before)
+    assert not np.shares_memory(depths, result.h_final)
+
+
+def test_edge_depths_fresh_copy():
+    result = _run_short(30.0, 25)
+    h_final_before = result.h_final.copy()
+    samples = edge_depths(result, ENV)
+    assert samples.shape == (ENV.road_network.n_edges, 3)
+    assert samples.dtype == np.float64
+    samples[0, 0] = 999.0
+    assert np.array_equal(result.h_final, h_final_before)
+    assert not np.shares_memory(samples, result.h_final)
+
+
 # ---------------------------------------------------------------------------
 # Step 2c: peak_edge_depths
 # ---------------------------------------------------------------------------
 
 def test_peak_edge_depths_shape_dtype_fresh_copy():
     result = _run_short(30.0, 25)
+    h_peak_before = result.H_peak.copy()
     samples = peak_edge_depths(result, ENV)
     assert samples.shape == (ENV.road_network.n_edges, 3)
     assert samples.dtype == result.H_peak.dtype
-    # Fresh copy
-    samples_mut = samples.copy()
-    samples_mut[0, 0] = 999.0
-    assert result.H_peak[0, 0] != 999.0
+    # Fresh copy: mutating the returned array in place does not affect H_peak
+    samples[0, 0] = 999.0
+    assert np.array_equal(result.H_peak, h_peak_before)
+    assert not np.shares_memory(samples, result.H_peak)
 
 
 def test_peak_edge_depths_endpoint_columns_exact():
@@ -236,12 +282,9 @@ def test_peak_edge_depths_rain_sensitive_report(capsys):
 # ---------------------------------------------------------------------------
 
 def test_peak_outputs_no_susceptibility_reference():
-    module_source = inspect.getsource(__import__("urbanflood.orchestrator"))
-    import_lines = [
-        line for line in module_source.splitlines()
-        if line.strip().startswith("import ") or line.strip().startswith("from ")
-    ]
-    for line in import_lines:
-        assert "susceptibility" not in line, f"orchestrator.py imports susceptibility: {line}"
+    names = _imported_module_names("urbanflood.orchestrator")
+    assert not any("suscept" in n for n in names), (
+        f"orchestrator.py imports susceptibility: {names}"
+    )
     func_source = inspect.getsource(peak_node_depths) + inspect.getsource(peak_edge_depths)
     assert "suscept" not in func_source.lower(), "peak functions reference susceptibility"

@@ -377,8 +377,7 @@ def node_depths(
 
     * What: final water depth in metres at the end of the simulation at each
       road-network node cell. This is a final-depth output only, not a time
-      series; peak node depths are deliberately not part of this interface
-      (they remain optional and undecided).
+      series; for peak node depths see peak_node_depths().
     * What is a node: a land cell on any road line, as defined by
       env.road_network.node_rows / node_cols. Lake cells and ocean cells are
       never nodes (see roads.py), so by construction every node cell is a
@@ -465,8 +464,8 @@ def edge_depths(
       road-network edge: column 0 is the canonical start (0% of edge length),
       column 1 is the geometric midpoint (50% of edge length), and column 2
       is the canonical end (100% of edge length). This is a final-depth
-      output only, not a time series; peak edge depths are deliberately not
-      part of this interface (they remain optional and undecided).
+      output only, not a time series; for peak edge depths see
+      peak_edge_depths().
     * What is an edge: a road-network edge as defined by
       env.road_network.edge_u / edge_v / edge_path_cells. Edge ids index the
       canonically sorted edge list from roads.py. Ordering is canonical and
