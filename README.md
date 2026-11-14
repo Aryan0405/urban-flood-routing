@@ -85,7 +85,7 @@ testing only; no external validity is claimed anywhere).
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Scaffold and configuration | complete |
-| 1 | Environment generation (terrain, land cover, drainage, weather, roads) | pending |
+| 1 | Environment generation (terrain, land cover, drainage, weather, roads) | complete (pending commit approval) |
 | 2 | Flood simulator and dt sensitivity | pending |
 | 3 | Susceptibility index and Experiment A | pending |
 | 4 | Routing and Experiment C | pending |
@@ -97,7 +97,9 @@ See STATUS.md for the current phase log with actual test results.
 ## Repository layout
 
 ```
-src/urbanflood/   package code (config and rng in Phase 0)
+src/urbanflood/   package code (config and rng from Phase 0; environment
+                  terrain/lakes/land cover/outfalls, roads, drainage, and
+                  weather from Phase 1)
 tests/            pytest suite, including the TC6 ASCII-only scan
 STATUS.md         phase log
 requirements.txt  minimum-version constraints (NOT exact pins)

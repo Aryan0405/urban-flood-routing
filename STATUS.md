@@ -1,5 +1,244 @@
 # STATUS
 
+## Phase 1: Environment generation - COMPLETE (audit-corrected)
+
+Date: 2026-11-09
+Specification: Architecture V7 (approved)
+
+### Audit corrections applied before commit approval (user review round 1)
+
+Scope: four review findings; no locked V7 value changed; no Phase 0
+configuration or RNG code touched; environment digest semantics unchanged
+(see item 3 for the one seed whose digest necessarily changed).
+
+1. Road lake-crossing guarantee (`roads.py _ensure_lake_crossings`
+   rewritten). A crossing column is now chosen only among the lake's OWN
+   water columns, candidates ordered deterministically by descending
+   water-cell count and then column id; occupied columns are skipped
+   explicitly instead of the previous increment-off-the-lake walk; the
+   moved line keeps its service class; no extra RNG draw is consumed; the
+   helper raises RuntimeError explicitly if no valid interior crossing
+   column exists rather than silently violating the invariant. Unit tests
+   cover actual-water-column targets, class preservation and uniqueness,
+   the occupied-water-column (crossed, no move) case, an out-of-bounds
+   densest-column fallback, two lakes in one call, a move never removing
+   another lake's only crossing (seed-78 equivalent), an explicit failure
+   when every line is another lake's only crossing, the no-interior-column
+   failure path, and determinism: nine crossing-guarantee helper tests.
+   New environment-level tests assert connectivity and at least one bridge
+   per lake at the master seed, seed 78 (regression), and all five
+   Experiment A seeds.
+2. Read-only arrays. New `src/urbanflood/arrays.py` with `freeze_array`
+   (disables the writeable flag in place, no copy). Applied at final
+   assembly to every exposed array of SyntheticEnvironment (8 arrays),
+   RoadNetwork (10 arrays), and DrainageFields (3 arrays). Tests assert
+   read-only status for every exposed array and that mutation attempts
+   raise ValueError; digest computation and all existing consumers were
+   confirmed to work on the frozen buffers (TC1 rebuild equality still
+   passes). Environment digests for all six tested seeds are byte-identical
+   to before the freeze (metadata-only change).
+3. Lake carving rim coverage (necessary correction, explicitly explained).
+   The recorded spill level was previously the minimum over the rim ring
+   [2.05*sigma, 2.35*sigma], although the carve bump's compact support
+   already ends at 2.0*sigma. The unchecked annulus [2.0, 2.05]*sigma could
+   dip below the recorded spill, so surrounding land would read as
+   submerged at a waterbody whose rim should bound it. The spill ring is
+   now the FULL non-carve annulus [2.0, 2.35]*sigma (environment docstring
+   updated). Guard also added: the complete bowl footprint must lie inside
+   the grid columns so no lake is laterally clipped. Effects measured at
+   the master seed and the five Experiment A seeds: five digests are
+   unchanged; at seed 6574970189797259754 lake 1's spill level dropped
+   from 5.8328 m to 5.6363 m (the widened ring found the true rim minimum)
+   and its area changed from 36 to 35 cells, so that environment's digest
+   changed. Draw order is untouched; the change only re-evaluates the
+   spill ring over a wider (still untouched) annulus. The digest comparison
+   above is HISTORICAL: it was measured when the rim-ring correction was
+   applied (only seed 6574970189797259754's digest changed; the other five
+   seeds were byte-identical). Current-state behavior is verified by the
+   executed test suite -- TC1 determinism and the six-seed lake invariants
+   run on every invocation -- not by digest comparisons. This session's
+   lower-row guard correction (2.0*sigma -> 2.35*sigma) changes no
+   generated environment: legal placements always satisfy center_row -
+   2.35*sigma >= 13.5 (LAKE_ROW_MIN = 30, sigma <= 7), so the tightened
+   guard cannot bind.
+4. Rainfall volume helper semantics (`tests/test_weather.py` fixed). The
+   helper `applied_precipitation_volume` is per cell per timestep; the
+   faulty test had passed an aggregate sum of rates. Now parametrized
+   tests check it with individual timestep rates (V_precip = R_k * A * dt)
+   and a separate, clearly named aggregate helper
+   `total_precipitation_volume(rates, cell_area_m2, dt_s)` is provided and
+   tested against the stepwise sum. Rainfall totals, pulse timings, and
+   scenario values are untouched.
+
+Multi-seed lake evidence (master 2027 plus all five Experiment A seeds;
+test, not a universal claim). Actual values:
+
+  seed 2027:                lake 0 spill 10.0624, bed 4.9346, area 19
+                            lake 1 spill 11.4668, bed 2.9670, area 12
+  seed 10406733617104774339: lake 0 spill 16.3729, bed 11.8350, area 12
+                            lake 1 spill 3.4379, bed 0.2000, area 34
+  seed 2112024614403005981: lake 0 spill 9.3471, bed 0.2000, area 53
+                            lake 1 spill 3.9766, bed 0.2000, area 22
+  seed 4656971133199668420: lake 0 spill 12.2401, bed 0.7870, area 45
+                            lake 1 spill 8.3411, bed 0.2000, area 44
+  seed 11861282352235076592: lake 0 spill 3.0330, bed 0.2000, area 15
+                            lake 1 spill 3.4053, bed 0.2000, area 13
+  seed 6574970189797259754: lake 0 spill 18.2282, bed 4.6992, area 73
+                            lake 1 spill 5.6363, bed 0.2000, area 35
+
+The 14 m adaptive-depth cap binds (carved depth exactly 14.0 m) for every
+accepted attempt at all six seeds; acceptance invariants (spill >= 2.0 m,
+spill minus bed >= 0.3 m, single 4-connected component, at least 12 cells,
+lake cells strictly below spill, entire full-annulus rim at or above the
+spill level) hold everywhere, so the binding cap does not hurt validity.
+No accepted attempt was rejected by the new footprint guard at any of the
+six seeds (five digests identical, one changed only through item 3's rim
+fix). Per-lake maximum initial depths h_init = spill - bed range from 2.83 m to
+13.53 m across the twelve lakes (h_init itself is evaluated per cell as
+max(0, L_normal - z) in Phase 2); several lakes clip to the 0.2 m terrain
+floor and are therefore flat-bedded basins, disclosed as such.
+
+### Completed (original Phase 1 entry)
+
+- `src/urbanflood/environment.py`: SYNTHETIC environment builder on the
+  independent "env" stream with a documented canonical RNG draw order
+  (spectral white noise -> lake placement attempts -> road line permutations
+  -> land-cover uniforms):
+  - FFT-based spectral relief field (power-law amplitude mask, wavelengths
+    below 150 m removed, k = 0 mode zeroed), regional inland trend
+    (0.2 -> 52 m, power 1.35, smooth shore approach), amplitude ramping so
+    low-lying areas stay flat;
+  - vertical datum MSL = 0.0 m enforced: land terrain within [0.2, 60.0] m,
+    coastal band rows (4 rows above the shoreline) pinned exactly to
+    linspace(1.2, 0.2, 4) (TC13b), ocean band of 8 rows with synthetic
+    bathymetry from -1.5 m to -7.5 m below MSL;
+  - two carved lakes with compact-support Gaussian bowls cut to guarantee a
+    true rim spill level: the spill level is the minimum rim-ring elevation
+    of the post-carve terrain, recorded per lake for the Option A initial
+    depth rule h_init = max(0, L_normal - z) in Phase 2; effective carve
+    depth is adaptive (deterministic function of the draw and terrain,
+    capped at 14 m) because lateral relief variation across a bowl routine-
+    ly exceeds any fixed small depth; lakes are single 4-connected
+    components, inland-placed, separated by at least 30 cells;
+  - land cover from road proximity (distance transform) and low-lying
+    terrain with the four locked LandCover classes; WATER exactly equals
+    ocean plus lake cells;
+  - outfalls: land cells with a 4-neighbour face on the ocean; invert at
+    the cell bed elevation (freeboard locked at 0.0 m); all 96 shoreline
+    cells are outfalls;
+  - SHA-256 environment digest over the canonical array sequence (TC1).
+- `src/urbanflood/roads.py`: connected SYNTHETIC grid road network
+  (arterial/secondary/local lines; locked speeds 50/30/20 km/h):
+  - fixed coastal arterial on the shoreline row plus RNG-selected
+    horizontal (2 arterial, 4 secondary, 6 local) and vertical (3 arterial,
+    4 secondary, 6 local) full-span lines; connectivity holds by
+    construction and is asserted on the built graph (TC3, single component,
+    2213 nodes / 2355 edges at master seed 2027);
+  - bridges: water runs on any line are replaced by single bridge edges
+    whose deck elevation follows the locked rule deck =
+    max(max crossed lake spill level + 1.0 m freeboard,
+    min(abutment land elevations)); each lake is guaranteed at least one
+    crossing by a deterministic no-RNG adjustment (move the vertical line
+    closest to the densest water column onto that column);
+  - canonical node ids (row-major sorted land road cells) and edge ids
+    (sorted unordered uv pairs); paths record full geometry cells for the
+    later 3-point edge depth sampling;
+  - no road path ever touches an ocean cell.
+- `src/urbanflood/drainage.py`: hidden drainage fields from the independent
+  drainage stream; signature (master_seed, n_cells, blocked_fraction,
+  drainage_config) receives NO terrain argument (TC2a structural);
+  canonical draw order capacity -> efficiency -> blocked makes the locked
+  S3 rule exact by construction: regenerating the mask with
+  blocked_fraction = 0.40 on the same stream reproduces capacity and
+  efficiency bitwise and yields a nested (superset) blocked mask.
+- `src/urbanflood/weather.py`: the four locked scenarios realized as exact
+  interval integration of the triangular pulse, R_k = (1/dt) * integral of
+  R over [t_k, t_k + dt), verified to preserve the declared totals exactly
+  at every tested dt (7.5 to 300 s); midpoint tide series generator
+  t_mid,k = (k + 0.5) * dt feeding Phase 2 outfall blocking and sea
+  exchange; the weather stream is deliberately left unused (locked
+  scenarios are deterministic; zero RNG consumption asserted structurally).
+- Tests: tests/test_environment.py, tests/test_roads.py,
+  tests/test_drainage.py, tests/test_weather.py.
+
+### Test results (actually executed, final run after audit corrections)
+
+Command: `.\.venv\Scripts\python.exe -m pytest -v`
+Result: 134 passed, 0 failed, 0 skipped in 1.26 s
+Platform: win32, Python 3.11.9 (project .venv), pytest 9.2.0
+
+Breakdown (per-module counts gathered from individual runs):
+- tests/test_ascii.py: 1 passed (TC6 scan, 21 files including arrays.py; all ASCII)
+- tests/test_config.py: 25 passed (unchanged Phase 0 behaviour)
+- tests/test_drainage.py: 12 passed (TC2a signature, ranges, determinism,
+  S3 mask nesting, frozen container, read-only arrays, digest reads)
+- tests/test_environment.py: 31 passed (TC1 determinism, TC13b checks,
+  lake Option A invariants including the six-seed sweep, land cover,
+  outfalls, stream membership, read-only arrays and mutation rejections)
+- tests/test_rng.py: 9 passed (unchanged Phase 0 behaviour)
+- tests/test_roads.py: 31 passed (TC3 connectivity, canonical ids, bridge
+  paths and locked deck rule, six-seed connectivity plus bridges, nine
+  crossing-guarantee helper tests)
+- tests/test_weather.py: 25 passed (exact integration totals at many dt,
+  pulse shape and support, R/S1 totals, S2/S3 inheritance, per-timestep
+  and aggregate volume semantics, zero-RNG claim, midpoint tide)
+
+Pre-correction runs: first run 12 failed / 87 passed (three causes
+documented below); post-implementation run 100 passed; first audit run
+3 failed / 128 passed (two unit-test bugs using unique lake-id values
+instead of unique water columns, plus the genuine rim-annulus finding
+corrected in item 3). All runs' outputs were captured.
+
+First-implementation run failure causes (all fixed; no locked value changed):
+
+1. weather.py interval_mean_rate iterated the GLOBAL pulse knot list of
+   each call instead of the knots clipped to the query interval, so every
+   interval received the full-storm integral (applied depth 8.64 m instead
+   of 0.12 m). Fixed to intersect the interval with the pulse knots; the
+   fine-trapezoid cross-check now passes to 1e-6 relative.
+2. A wrong constant in a test (ocean row count written as SEA_ROWS - 1
+   instead of SEA_ROWS; the sea band is 8 ocean rows exactly).
+3. A test was accidentally parametrized as a fixture (CONFIG in the
+   signature of test_free_flow_times_locked_speeds); replaced by the
+   module constant.
+
+### Generation hyperparameters (Phase 1 design choices, not locked V7 values)
+
+Recorded in the module constants; changing any of them intentionally
+changes the environment and its digest:
+sea band 8 rows; coastal band 4 pinned rows; relief amplitude 6.0 m with
+8.0 m ramp; spectral exponent 1.6, soft wavelength 1600 m, cutoff 150 m;
+trend max 52.0 m at power 1.35; two lakes with sigma 4-7 cells, depth draw
+3-6 m (minimum; adaptive cap 14.0 m), spill threshold 2.0 m, minimum area
+12 cells, minimum water depth 0.3 m, 40 attempts, center separation
+30 cells; road lines 2+4+6 horizontal (plus the fixed coastal arterial)
+and 3+4+6 vertical; impervious probability base 0.30, road term 0.30
+(length scale 2.5 cells), lowland term 0.15, open-ground fraction 0.15.
+
+### Known issues / notes
+
+- The adaptive lake depth cap (14 m) can in principle bind before
+  submergence for an extreme draw; such an attempt is then rejected and
+  redrawn deterministically (40 attempts per lake); no failure was
+  observed at the master seed or the 5 Experiment A seeds.
+- Land cover under lakes is WATER by construction; land-cover impervious
+  probability near bridges uses road-node proximity, so abutment cells are
+  near-road but bridge water cells are not classified impervious.
+- Ocean cells are the only storage exclusion (boundary reservoir); lake
+  initial volume belongs to the ledger baseline (Option A), enforced by the
+  recorded spill levels consumed in Phase 2.
+
+### Next phase (awaiting explicit "next")
+
+Phase 2: flood simulator. Skeleton: synchronous per-step update with one
+old-state snapshot; rainfall partition V_runoff/V_loss; drainage with
+bounded-availability rescaling; per-face sea exchange at canonical faces;
+inter-cell linear head-difference exchange in canonical pair order; mass
+ledger IN - OUT - dS asserted to 1e-9 relative; ocean boundary reservoir;
+Option A lake initialisation from recorded spill levels; TC7 ledger, TC8
+toy problems, TC10 dt sensitivity (dt = 15 s), TC12 rainfall bookkeeping,
+TC14 bitwise canonical-order invariance.
+
 ## Phase 0: Scaffold and configuration - COMPLETE
 
 Date: 2026-11-09
@@ -99,7 +338,7 @@ weather scenarios, and the road network with bridge decks. Acceptance:
 TC1 determinism, TC2a/TC2b structural independence, TC3 road connectivity
 and bridge placement, TC13b datum consistency.
 
-### Corrective audit after the Phase 0 commit (recorded, pending commit approval)
+### Corrective audit after the Phase 0 commit (recorded)
 
 Scope: four material issues from a post-commit audit; no locked V7 value
 changed; no history rewrite; branch is main tracking origin/main.
