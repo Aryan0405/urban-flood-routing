@@ -17,11 +17,17 @@ and the stream name. This makes every stream:
 
   deterministic      same inputs always produce the same stream seed
   reproducible       the stream seed fully fixes the downstream generator
-  structurally distinct   different stream names can never collide, so the
-                      drainage properties are structurally incapable of
-                      depending on terrain by construction, not merely by
-                      statistical observation (this is asserted by TC2a,
-                      never proven by small-sample correlation).
+  name-separated     different stream names map to independently derived seeds.
+                      The derivation is SHA-256, truncated to the first 64
+                      bits: two distinct named streams CAN in principle
+                      collide, though a collision is negligibly unlikely
+                      (birthday bound on a 2^64 space). Distinctness across
+                      stream names is therefore probabilistic, not
+                      mathematically impossible. The structural separation
+                      from terrain is exact and by construction: the drainage
+                      generator receives no terrain argument at all (asserted
+                      by TC2a structurally, never by small-sample
+                      correlation).
 
 Payload format (versioned; changing it is an intentional, documented act):
   synthetic-urban-flood/seed-v1/{master_seed}/{stream_name}

@@ -100,9 +100,57 @@ See STATUS.md for the current phase log with actual test results.
 src/urbanflood/   package code (config and rng in Phase 0)
 tests/            pytest suite, including the TC6 ASCII-only scan
 STATUS.md         phase log
-requirements.txt  pinned dependencies (numpy, scipy, networkx, pandas,
-                  matplotlib, streamlit, pytest)
+requirements.txt  minimum-version constraints (NOT exact pins)
+pyproject.toml    package metadata; no dependency versions declared
 ```
+
+## Environment setup (Windows PowerShell)
+
+The project targets Python 3.11. Verified during the Phase 0 corrective
+audit: Python 3.11.9 was found via the Windows py launcher and used to create
+the project-local virtual environment. No global Python installation was
+made and no package was installed outside the virtual environment.
+
+```powershell
+# create the environment with the py launcher (Python 3.11)
+py -3.11 -m venv .venv
+
+# activate it (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# if activation is blocked by execution policy, run once and then retry:
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+# install the minimum-constraint dependency set (project-local only)
+python -m pip install -r requirements.txt
+
+# run the full test suite
+python -m pytest -v
+```
+
+The environment is already present in the working copy; `.venv/` is ignored
+by Git (see `.gitignore`).
+
+## Dependencies
+
+`requirements.txt` states **minimum-version constraints, not exact pins**:
+
+```
+numpy>=1.26, scipy>=1.10, networkx>=3.1, pandas>=2.0,
+matplotlib>=3.8, streamlit>=1.30, pytest>=8.0
+```
+
+`pyproject.toml` declares no dependency versions, so the two files agree by
+intention. Versions actually resolved in the audited Python 3.11.9 virtual
+environment (evidence for compatibility, recorded 2026-11-09):
+
+```
+numpy==2.4.6, scipy==1.17.1, networkx==3.6.1, pandas==3.1.1,
+matplotlib==3.11.2, streamlit==1.67.0, pytest==9.2.0
+```
+
+Exact pinning is deliberately not used: if pinning is later adopted, it must
+be verified against this environment first, per project policy.
 
 ## Running the tests
 

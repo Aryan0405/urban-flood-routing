@@ -98,3 +98,35 @@ drainage fields from the independent drainage stream, the four locked
 weather scenarios, and the road network with bridge decks. Acceptance:
 TC1 determinism, TC2a/TC2b structural independence, TC3 road connectivity
 and bridge placement, TC13b datum consistency.
+
+### Corrective audit after the Phase 0 commit (recorded, pending commit approval)
+
+Scope: four material issues from a post-commit audit; no locked V7 value
+changed; no history rewrite; branch is main tracking origin/main.
+
+- rng.py: removed the false "different stream names can never collide"
+  claim; replaced with accurate wording (deterministic derivation, collision
+  negligibly unlikely, not impossible). Algorithm unchanged; golden tests
+  unchanged.
+- config.py: module-level SCENARIOS registry wrapped in MappingProxyType
+  (ProjectConfig view unchanged); new focused test proves registry- and
+  member-level mutation fails.
+- README.md: "pinned dependencies" wording corrected to minimum-version
+  constraints; PowerShell environment setup and dependency sections added.
+- Environment: .venv created from Python 3.11.9 (py -3.11); minimum
+  constraint set installed project-locally; resolved versions recorded in
+  README. .venv/ already ignored by Git (verified with git check-ignore).
+- Test result after corrections (project venv, Python 3.11.9, pytest 9.2.0):
+  35 passed, 0 failed, 0 skipped in 12.51 s, including TC6.
+- Modelling decision recorded (user choice, Option A): inland waterbody
+  cells are ordinary dynamic surface-water cells that participate in
+  storage and the mass ledger. Agreed scope:
+  (1) initial depth from the waterbody spill level against its bed;
+  (2) lateral exchange with neighbours and overflow onto land allowed;
+  (3) storage included in total surface-water storage;
+  (4) ledger tracks change relative to the initial state, so initial lake
+  volume is never counted as new rainfall input;
+  (5) WATER cells retain alpha = 1.0 under the established partition;
+  (6) ocean cells remain the only exclusion (boundary reservoir).
+  Documentation consolidated in config.py; implementation belongs to
+  Phase 2 and no simulator code exists yet.

@@ -29,6 +29,23 @@ Rainfall partition (V7 correction 1):
     OUT = sum(V_loss) + sum(V_drain) + SEA_OUT
   asserted to 1e-9 relative on every run (TC7).
 
+  Ledger scope and initial state (user decision, Option A, Phase 0 audit):
+  Inland permanent-water cells are ORDINARY DYNAMIC surface-water cells, not
+  a special simulator category:
+    - initial depth comes from the waterbody's defined normal/spill level
+      against its bed elevation: h_init,i = max(0, L_normal,i - z_i), with
+      L_normal,i the pre-carving rim/spill elevation recorded at generation;
+    - they exchange water with neighbouring cells under the ordinary flux
+      rules and can overflow onto surrounding land during storms;
+    - their storage is included in the total surface-water storage;
+    - the mass ledger tracks CHANGES relative to the initial state:
+      dS = final total storage - initial total storage, so the initial lake
+      volume sits inside the ledger baseline and is never counted as new
+      rainfall input;
+    - WATER cells retain alpha = 1.0 under the established rainfall
+      partition.
+  Ocean cells are the only exclusion, acting as the boundary reservoir.
+
 Synchronous update convention (V6 correction 2, retained):
   One old-state snapshot h_now per step feeds ALL candidate quantities
   (drainage, per-face sea exchange, inter-cell pair fluxes). Rainfall is an
@@ -57,6 +74,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
+from typing import Mapping
 
 from urbanflood.rng import (
     STREAM_DRAINAGE,
@@ -150,6 +168,12 @@ class RunoffConfig:
     V_runoff = alpha * V_precip (enters the surface-water system) and
     V_loss = V_precip - V_runoff (never enters the surface-water system).
     No soil storage state exists; disclosed as weakness W3 of Architecture V7.
+    The WATER class (alpha = 1.0) is treated per the ledger-scope statement
+    in the module docstring (Option A decision, Phase 0 audit): waterbody
+    cells are ordinary dynamic cells with initial depth set from the spill
+    level against the bed, lateral exchange and overflow onto land allowed,
+    and initial volume inside the change-relative ledger baseline rather
+    than counted as a rainfall input term.
     """
 
     impervious: float = 0.90
@@ -295,12 +319,21 @@ RAIN_S1 = RainScenario(name="S1", peak_mm_per_h=150.0, total_mm=200.0)
 TIDE_R = TideConfig(amplitude_m=0.8)
 TIDE_S2 = TideConfig(amplitude_m=1.8)
 
-SCENARIOS: dict[str, FloodScenario] = {
-    "R": FloodScenario(name="R", rainfall=RAIN_R, tide=TIDE_R, blocked_fraction=0.20, is_reference=True),
-    "S1": FloodScenario(name="S1", rainfall=RAIN_S1, tide=TIDE_R, blocked_fraction=0.20),
-    "S2": FloodScenario(name="S2", rainfall=RAIN_R, tide=TIDE_S2, blocked_fraction=0.20),
-    "S3": FloodScenario(name="S3", rainfall=RAIN_R, tide=TIDE_R, blocked_fraction=0.40),
-}
+SCENARIOS: Mapping[str, FloodScenario] = MappingProxyType(
+    {
+        "R": FloodScenario(name="R", rainfall=RAIN_R, tide=TIDE_R, blocked_fraction=0.20, is_reference=True),
+        "S1": FloodScenario(name="S1", rainfall=RAIN_S1, tide=TIDE_R, blocked_fraction=0.20),
+        "S2": FloodScenario(name="S2", rainfall=RAIN_R, tide=TIDE_S2, blocked_fraction=0.20),
+        "S3": FloodScenario(name="S3", rainfall=RAIN_R, tide=TIDE_R, blocked_fraction=0.40),
+    }
+)
+"""Immutable locked scenario registry.
+
+The mapping view is read-only: insertion, deletion, and value replacement
+raise TypeError. Every registered FloodScenario (and its rainfall and tide
+members) is a frozen dataclass, so nested mutation also fails. There is no
+public mutable handle to this registry.
+"""
 
 REFERENCE_SCENARIO_NAME = "R"
 

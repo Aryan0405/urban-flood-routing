@@ -365,3 +365,30 @@ def test_project_config_scenarios_view():
     assert set(scenarios.keys()) == {"R", "S1", "S2", "S3"}
     with pytest.raises(TypeError):
         scenarios["R"] = None
+
+
+def test_scenario_registry_is_globally_immutable():
+    """Focused audit test (Phase 0 corrective audit, item D).
+
+    The module-level registry itself, not only the ProjectConfig view, must
+    resist mutation. The underlying object is a MappingProxyType over frozen
+    dataclasses, so both registry-level and member-level mutation must fail
+    while lookups remain functional.
+    """
+    scenario = SCENARIOS["R"]
+    # registry-level mutation is rejected
+    with pytest.raises(TypeError):
+        SCENARIOS["S4"] = scenario
+    with pytest.raises(TypeError):
+        del SCENARIOS["R"]
+    # member-level mutation is rejected: FloodScenario and its nested
+    # RainScenario / TideConfig members are frozen dataclasses
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        SCENARIOS["R"].blocked_fraction = 0.5
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        SCENARIOS["R"].rainfall.peak_mm_per_h = 150.0
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        SCENARIOS["S2"].tide.amplitude_m = 0.8
+    # read access is unaffected
+    assert SCENARIOS["R"] is scenario
+    assert set(SCENARIOS.keys()) == {"R", "S1", "S2", "S3"}
